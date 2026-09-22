@@ -37,8 +37,9 @@ app.get("/api/gemini-status", (_req, res) => {
 // Gemini API Key Validation / Ping endpoint
 app.post("/api/validate-gemini-key", async (req, res) => {
   try {
-    const key = (req.body?.apiKey as string) || (req.headers["x-gemini-api-key"] as string) || process.env.GEMINI_API_KEY;
-    if (!key || !key.trim()) {
+    const rawKey = req.body?.apiKey !== undefined ? req.body.apiKey : ((req.headers["x-gemini-api-key"] as string) || process.env.GEMINI_API_KEY);
+    const key = typeof rawKey === 'string' ? rawKey.trim() : '';
+    if (!key) {
       return res.status(400).json({ status: "error", message: "Kunci API tidak boleh kosong." });
     }
 

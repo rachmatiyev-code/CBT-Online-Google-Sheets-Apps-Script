@@ -93,19 +93,84 @@ export const AiGeneratorTab: React.FC<AiGeneratorTabProps> = ({
 
       let generatedList: Question[] = [];
 
-      if (res.ok) {
-        const jsonRes = await res.json();
-        if (jsonRes.status === 'success' && Array.isArray(jsonRes.data) && jsonRes.data.length > 0) {
-          generatedList = jsonRes.data;
+      try {
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const jsonRes = await res.json();
+          if (jsonRes.status === 'success' && Array.isArray(jsonRes.data) && jsonRes.data.length > 0) {
+            generatedList = jsonRes.data;
+          }
         }
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        if (errData.message) {
-          console.warn('Backend returned warning:', errData.message);
+      } catch (e) {
+        console.warn('Backend proxy response parse failed:', e);
+      }
+
+      // 2. Direct client-side Gemini generation if serverless/proxy route is unavailable (e.g. Vercel)
+      if (generatedList.length === 0 && clientKey) {
+        try {
+          const directPrompt = `Anda adalah asisten kurikulum perancang butir soal ujian Computer Based Test (CBT) profesional di Indonesia.
+Buat ${jumlah || 3} butir soal berkualitas tinggi dengan parameter berikut:
+- Jenjang Pendidikan: ${tingkat || 'SD / SMP / SMA'}
+- Tingkat Kelas: ${kelas || 'Umum'}
+- Mata Pelajaran: ${selectedMapel?.nama_mapel || idMapel || 'Umum'} (ID Mapel: ${idMapel || 'MAPEL-01'})
+- Topik / Materi: ${topic || 'Materi Umum'}
+- Bentuk Soal: ${bentukSoal || 'Campuran'}
+${promptKustom ? `- Instruksi Tambahan / Kisi-kisi: ${promptKustom}` : ''}
+
+Peraturan format butir soal:
+1. Jika bentukSoal adalah 'PG': opsi_json berupa array 4 teks pilihan (contoh: ["Pilihan A", "Pilihan B", "Pilihan C", "Pilihan D"]) dan kunci_jawaban_json adalah huruf tunggal "A", "B", "C", atau "D".
+2. Jika bentukSoal adalah 'PGK': opsi_json berupa array 4 opsi, dan kunci_jawaban_json adalah array pilihan teks yang benar (contoh: ["opsi A", "opsi C"]).
+3. Jika bentukSoal adalah 'MJ': opsi_json adalah objek { "kiri": ["item1", "item2", "item3"], "kanan": ["pasangan1", "pasangan2", "pasangan3"] }, kunci_jawaban_json adalah mapping { "item1": "pasangan1", "item2": "pasangan2", "item3": "pasangan3" }.
+4. Jika bentukSoal adalah 'IS': opsi_json null, kunci_jawaban_json adalah array string alternatif jawaban yang diterima (contoh: ["9", "sembilan"]).
+5. Jika bentukSoal adalah 'UR': opsi_json null, kunci_jawaban_json berupa string kata kunci jawaban, dan pembahasan memuat rubrik penskoran.
+6. Jika bentukSoal adalah 'Campuran': buat variasi jenis soal (PG, PGK, MJ, IS, UR).
+
+Balas HANYA JSON array valid murni:
+[
+  {
+    "id_soal": "AI01",
+    "id_mapel": "${idMapel || 'MAPEL-01'}",
+    "jenis_soal": "PG",
+    "pertanyaan": "...",
+    "opsi_json": ["...", "...", "...", "..."],
+    "kunci_jawaban_json": "A",
+    "bobot": 1,
+    "pembahasan": "..."
+  }
+]`;
+
+          const directRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(clientKey)}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: directPrompt }] }],
+                generationConfig: {
+                  responseMimeType: 'application/json',
+                  temperature: 0.4,
+                },
+              }),
+            }
+          );
+
+          if (directRes.ok) {
+            const directData = await directRes.json();
+            const textResponse = directData?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (textResponse) {
+              const cleanJson = textResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+              const parsed = JSON.parse(cleanJson);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                generatedList = parsed;
+              }
+            }
+          }
+        } catch (directErr) {
+          console.warn('Direct Google Gemini generation attempt failed, using fallback template:', directErr);
         }
       }
 
-      // 2. Intelligent client-side fallback if API returns error or no key configured
+      // 3. Intelligent pedagogical fallback if API returns error or no key configured
       if (generatedList.length === 0) {
         const timestamp = Date.now().toString().slice(-4);
         const count = Math.min(20, Math.max(1, Number(jumlah) || 3));
