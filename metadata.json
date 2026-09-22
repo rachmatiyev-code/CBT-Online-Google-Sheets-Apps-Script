@@ -1,0 +1,6 @@
+{
+  "name": "CBT Online Google Sheets & Apps Script",
+  "description": "Aplikasi Web Ujian Online (Computer Based Test) berbasis Google Sheets sebagai database dan Google Apps Script tanpa Firebase maupun Google Cloud.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

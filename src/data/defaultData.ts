@@ -1,0 +1,303 @@
+import { MataPelajaran, Question, Siswa, HasilUjian } from '../types';
+
+export const DEFAULT_MAPEL: MataPelajaran[] = [
+  {
+    id_mapel: 'MAT-03',
+    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    kelas: '3 SD',
+    durasi_menit: 45,
+    token_akses: 'MTK3A',
+    kkm: 75,
+    status_aktif: true,
+    acak_soal: false,
+    acak_opsi: false,
+    tampilkan_nilai: true,
+    tampilkan_pembahasan: true,
+    anti_curang: true,
+    maks_pelanggaran: 3,
+  },
+  {
+    id_mapel: 'IPA-05',
+    nama_mapel: 'IPA - Ekosistem & Adaptasi Hewan',
+    kelas: '5 SD',
+    durasi_menit: 40,
+    token_akses: 'IPA5B',
+    kkm: 70,
+    status_aktif: true,
+    acak_soal: false,
+    acak_opsi: false,
+    tampilkan_nilai: true,
+    tampilkan_pembahasan: true,
+    anti_curang: true,
+    maks_pelanggaran: 3,
+  },
+  {
+    id_mapel: 'IND-04',
+    nama_mapel: 'Bahasa Indonesia - Membaca & Menulis',
+    kelas: '4 SD',
+    durasi_menit: 45,
+    token_akses: 'BIN4C',
+    kkm: 75,
+    status_aktif: false,
+    acak_soal: false,
+    acak_opsi: false,
+    tampilkan_nilai: true,
+    tampilkan_pembahasan: true,
+    anti_curang: true,
+    maks_pelanggaran: 3,
+  }
+];
+
+export const DEFAULT_QUESTIONS: Question[] = [
+  // MAT-03 Questions
+  {
+    id_soal: 'S01',
+    id_mapel: 'MAT-03',
+    jenis_soal: 'PG',
+    pertanyaan: 'Berapakah hasil dari perkalian 15 × 4?',
+    opsi_json: ['50', '60', '70', '80'],
+    kunci_jawaban_json: 'B',
+    bobot: 1,
+    pembahasan: '15 × 4 = (10 × 4) + (5 × 4) = 40 + 20 = 60.',
+  },
+  {
+    id_soal: 'S02',
+    id_mapel: 'MAT-03',
+    jenis_soal: 'PGK',
+    pertanyaan: 'Manakah dari bilangan-bilangan di bawah ini yang merupakan bilangan genap? (Pilih semua yang benar)',
+    opsi_json: ['12', '15', '18', '21', '24'],
+    kunci_jawaban_json: ['12', '18', '24'],
+    bobot: 2,
+    pembahasan: 'Bilangan genap adalah bilangan yang habis dibagi 2 (berakhiran 0, 2, 4, 6, 8). Yaitu 12, 18, dan 24.',
+  },
+  {
+    id_soal: 'S03',
+    id_mapel: 'MAT-03',
+    jenis_soal: 'MJ',
+    pertanyaan: 'Jodohkan operasi pecahan berikut dengan nilai desimal atau bentuk sederhananya yang tepat!',
+    opsi_json: {
+      kiri: ['1/2', '3/4', '1/5'],
+      kanan: ['0.50', '0.75', '0.20', '0.33']
+    },
+    kunci_jawaban_json: {
+      '1/2': '0.50',
+      '3/4': '0.75',
+      '1/5': '0.20'
+    },
+    bobot: 2,
+    pembahasan: '1/2 = 0.50; 3/4 = 0.75; 1/5 = 0.20.',
+  },
+  {
+    id_soal: 'S04',
+    id_mapel: 'MAT-03',
+    jenis_soal: 'IS',
+    pertanyaan: 'Sebuah persegi memiliki panjang sisi 8 cm. Berapakah keliling persegi tersebut dalam satuan cm? (Tulis hanya angka)',
+    kunci_jawaban_json: ['32', '32 cm'],
+    bobot: 1,
+    pembahasan: 'Keliling persegi = 4 × sisi = 4 × 8 cm = 32 cm.',
+  },
+  {
+    id_soal: 'S05',
+    id_mapel: 'MAT-03',
+    jenis_soal: 'UR',
+    pertanyaan: 'Ibu memiliki 3 keranjang buah. Setiap keranjang berisi 12 buah apel. Kemudian Ibu membagikan 16 buah apel kepada tetangga. Jelaskan langkah-langkah menghitung sisa apel yang dimiliki Ibu sekarang!',
+    kunci_jawaban_json: 'Rubrik: 1. Menghitung total awal (3 x 12 = 36). 2. Mengurangi dengan yang dibagikan (36 - 16 = 20 apel).',
+    bobot: 3,
+    pembahasan: 'Total apel = 3 keranjang × 12 = 36 buah. Sisa apel = 36 - 16 = 20 buah.',
+  },
+
+  // IPA-05 Questions
+  {
+    id_soal: 'IPA01',
+    id_mapel: 'IPA-05',
+    jenis_soal: 'PG',
+    pertanyaan: 'Hewan pemakan tumbuhan dalam suatu rantai makanan disebut sebagai...',
+    url_gambar: 'https://images.unsplash.com/photo-1546182990-dffeafbe841d?w=600&auto=format&fit=crop&q=80',
+    opsi_json: ['Herbivora', 'Karnivora', 'Omnivora', 'Insektivora'],
+    kunci_jawaban_json: 'A',
+    bobot: 1,
+    pembahasan: 'Herbivora adalah hewan yang makanan utamanya adalah dedaunan atau tumbuhan (seperti sapi, kambing, kelinci).',
+  },
+  {
+    id_soal: 'IPA02',
+    id_mapel: 'IPA-05',
+    jenis_soal: 'PGK',
+    pertanyaan: 'Manakah bentuk adaptasi morfologi yang dimiliki oleh burung elang untuk menangkap mangsa? (Pilih 2 jawaban benar)',
+    opsi_json: [
+      'Paruh tajam, kuat, dan melengkung',
+      'Cakar tajam dan kuat untuk mencengkeram',
+      'Kaki berselaput untuk berenang',
+      'Leher yang sangat panjang'
+    ],
+    kunci_jawaban_json: [
+      'Paruh tajam, kuat, dan melengkung',
+      'Cakar tajam dan kuat untuk mencengkeram'
+    ],
+    bobot: 2,
+    pembahasan: 'Elang adalah pemangsa yang memiliki paruh tajam melengkung dan cakar kuat berkuku tajam.',
+  },
+  {
+    id_soal: 'IPA03',
+    id_mapel: 'IPA-05',
+    jenis_soal: 'MJ',
+    pertanyaan: 'Jodohkan hewan berikut dengan jenis makanannya dalam ekosistem!',
+    opsi_json: {
+      kiri: ['Sapi', 'Harimau', 'Ayam'],
+      kanan: ['Rumput / Tumbuhan', 'Daging', 'Biji-bijian & Cacing (Segala)']
+    },
+    kunci_jawaban_json: {
+      'Sapi': 'Rumput / Tumbuhan',
+      'Harimau': 'Daging',
+      'Ayam': 'Biji-bijian & Cacing (Segala)'
+    },
+    bobot: 2,
+    pembahasan: 'Sapi adalah herbivora, Harimau karnivora, dan Ayam omnivora.',
+  },
+  {
+    id_soal: 'IPA04',
+    id_mapel: 'IPA-05',
+    jenis_soal: 'IS',
+    pertanyaan: 'Proses pembuatan makanan pada tumbuhan hijau dengan bantuan cahaya matahari dan klorofil disebut...',
+    kunci_jawaban_json: ['fotosintesis', 'photosynthesis'],
+    bobot: 1,
+    pembahasan: 'Fotosintesis adalah proses biokimia pembentukan zat makanan seperti glukosa oleh tumbuhan hijau.',
+  },
+  {
+    id_soal: 'IPA05',
+    id_mapel: 'IPA-05',
+    jenis_soal: 'UR',
+    pertanyaan: 'Jelaskan apa yang akan terjadi pada populasi ular dan tanaman padi jika seluruh populasi tikus di sawah punah!',
+    kunci_jawaban_json: 'Rubrik: 1. Populasi ular akan menurun/kelaparan karena mangsanya hilang. 2. Produksi padi akan meningkat karena tidak dimakan tikus.',
+    bobot: 3,
+    pembahasan: 'Jika tikus punah: Tanaman padi akan berkembang subur dan panen meningkat, sedangkan populasi ular sawah akan berkurang drastis karena kekurangan sumber makanan.',
+  }
+];
+
+export const DEFAULT_SISWA: Siswa[] = [
+  { nisn: '12345', nama_siswa: 'Ahmad Faiz Pratama', kelas: '3-A', pin_siswa: '1122' },
+  { nisn: '12346', nama_siswa: 'Budi Santoso', kelas: '3-A', pin_siswa: '3344' },
+  { nisn: '12347', nama_siswa: 'Citra Dewi Lestari', kelas: '3-A', pin_siswa: '5566' },
+  { nisn: '12348', nama_siswa: 'Dimas Anggara', kelas: '3-A', pin_siswa: '7788' },
+  { nisn: '12349', nama_siswa: 'Eka Putri Rahayu', kelas: '3-A', pin_siswa: '9900' },
+  { nisn: '12350', nama_siswa: 'Fajar Nugroho', kelas: '3-A', pin_siswa: '1234' },
+  { nisn: '12351', nama_siswa: 'Gita Nurhaliza', kelas: '3-A', pin_siswa: '2345' },
+  { nisn: '12352', nama_siswa: 'Hadi Prasetyo', kelas: '3-A', pin_siswa: '3456' },
+];
+
+export const DEFAULT_HASIL: HasilUjian[] = [
+  {
+    id_hasil: 'H-101',
+    timestamp: '2026-09-21 08:30',
+    nisn: '12345',
+    nama_siswa: 'Ahmad Faiz Pratama',
+    kelas: '3-A',
+    id_mapel: 'MAT-03',
+    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    jawaban_siswa: {
+      S01: 'B',
+      S02: ['12', '18', '24'],
+      S03: { '1/2': '0.50', '3/4': '0.75', '1/5': '0.20' },
+      S04: '32',
+      S05: 'Pertama hitung total apel yaitu 3 dikali 12 menghasilkan 36 buah. Kemudian dikurangi 16 buah yang dibagikan, jadi sisa apel 20 buah.'
+    },
+    skor_per_soal: { S01: 1, S02: 2, S03: 2, S04: 1, S05: 3 },
+    skor_total: 9,
+    total_bobot: 9,
+    nilai_akhir: 100,
+    status_koreksi: 'SELESAI',
+    pelanggaran_curang: 0,
+    durasi_menit: 28,
+  },
+  {
+    id_hasil: 'H-102',
+    timestamp: '2026-09-21 08:35',
+    nisn: '12346',
+    nama_siswa: 'Budi Santoso',
+    kelas: '3-A',
+    id_mapel: 'MAT-03',
+    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    jawaban_siswa: {
+      S01: 'B',
+      S02: ['12', '18'],
+      S03: { '1/2': '0.50', '3/4': '0.75', '1/5': '0.33' },
+      S04: '32',
+      S05: 'Total apel ada 36 apel, dikurang 16 sisa 20 apel.'
+    },
+    skor_per_soal: { S01: 1, S02: 1.33, S03: 1.33, S04: 1, S05: 2.5 },
+    skor_total: 7.16,
+    total_bobot: 9,
+    nilai_akhir: 79.56,
+    status_koreksi: 'SELESAI',
+    pelanggaran_curang: 1,
+    durasi_menit: 35,
+  },
+  {
+    id_hasil: 'H-103',
+    timestamp: '2026-09-21 08:40',
+    nisn: '12347',
+    nama_siswa: 'Citra Dewi Lestari',
+    kelas: '3-A',
+    id_mapel: 'MAT-03',
+    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    jawaban_siswa: {
+      S01: 'A',
+      S02: ['12', '15', '18'],
+      S03: { '1/2': '0.50', '3/4': '0.20', '1/5': '0.75' },
+      S04: '32',
+      S05: 'Dihitung dari keranjang apel lalu dibagikan ke tetangga.'
+    },
+    skor_per_soal: { S01: 0, S02: 0.67, S03: 0.67, S04: 1, S05: 1.5 },
+    skor_total: 3.84,
+    total_bobot: 9,
+    nilai_akhir: 42.67,
+    status_koreksi: 'SELESAI',
+    pelanggaran_curang: 0,
+    durasi_menit: 42,
+  },
+  {
+    id_hasil: 'H-104',
+    timestamp: '2026-09-21 08:42',
+    nisn: '12348',
+    nama_siswa: 'Dimas Anggara',
+    kelas: '3-A',
+    id_mapel: 'MAT-03',
+    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    jawaban_siswa: {
+      S01: 'B',
+      S02: ['12', '18', '24'],
+      S03: { '1/2': '0.50', '3/4': '0.75', '1/5': '0.20' },
+      S04: '30',
+      S05: '3 keranjang dikali 12 sama dengan 36, lalu dikurangi 16 sisa 20 apel.'
+    },
+    skor_per_soal: { S01: 1, S02: 2, S03: 2, S04: 0, S05: 3 },
+    skor_total: 8,
+    total_bobot: 9,
+    nilai_akhir: 88.89,
+    status_koreksi: 'SELESAI',
+    pelanggaran_curang: 0,
+    durasi_menit: 31,
+  },
+  {
+    id_hasil: 'H-105',
+    timestamp: '2026-09-21 08:44',
+    nisn: '12349',
+    nama_siswa: 'Eka Putri Rahayu',
+    kelas: '3-A',
+    id_mapel: 'MAT-03',
+    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    jawaban_siswa: {
+      S01: 'B',
+      S02: ['12', '24'],
+      S03: { '1/2': '0.50', '3/4': '0.75', '1/5': '0.20' },
+      S04: '32',
+      S05: '3 x 12 = 36 apel, dikurang 16 = 20.'
+    },
+    skor_per_soal: { S01: 1, S02: 1.33, S03: 2, S04: 1, S05: 3 },
+    skor_total: 8.33,
+    total_bobot: 9,
+    nilai_akhir: 92.56,
+    status_koreksi: 'SELESAI',
+    pelanggaran_curang: 0,
+    durasi_menit: 29,
+  }
+];
