@@ -32,6 +32,34 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
   const [enteredToken, setEnteredToken] = useState<string>('');
   const [agreedToRules, setAgreedToRules] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isFromSharedLink, setIsFromSharedLink] = useState<boolean>(false);
+
+  // Initialize from URL parameters if accessed via shared student link
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const qMapel = params.get('mapel');
+      const qNisn = params.get('nisn');
+      const qMode = params.get('mode');
+
+      if (qMode === 'siswa' || qMapel || qNisn) {
+        setIsFromSharedLink(true);
+      }
+
+      if (qMapel && mapelList.some(m => m.id_mapel === qMapel)) {
+        setSelectedMapelId(qMapel);
+      }
+      if (qNisn) {
+        const matched = siswaList.find(s => s.nisn === qNisn);
+        if (matched) {
+          setSelectedNisn(matched.nisn);
+          setEnteredPin(matched.pin_siswa);
+        } else {
+          setSelectedNisn(qNisn);
+        }
+      }
+    }
+  }, [mapelList, siswaList]);
 
   useEffect(() => {
     if (!selectedMapelId && mapelList.length > 0) {
@@ -191,6 +219,16 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
               Pilih mata pelajaran, masukkan identitas dan token ujian dari pengawas.
             </p>
           </div>
+
+          {isFromSharedLink && (
+            <div className="mb-6 p-4 rounded-xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 text-xs sm:text-sm flex items-start space-x-3">
+              <Sparkles className="w-5 h-5 shrink-0 text-emerald-400 mt-0.5" />
+              <div>
+                <strong className="text-white block">Tautan Khusus Siswa Terdeteksi</strong>
+                <span>Mata pelajaran <strong>{currentMapel?.nama_mapel}</strong> telah otomatis dipilih. Silakan periksa NISN & PIN lalu masukkan Token Ujian untuk mulai.</span>
+              </div>
+            </div>
+          )}
 
           {errorMessage && (
             <div className="mb-6 p-4 rounded-xl bg-rose-950/60 border border-rose-800/60 text-rose-300 text-xs sm:text-sm flex items-start space-x-3">

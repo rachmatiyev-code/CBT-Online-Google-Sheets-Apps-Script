@@ -1,4 +1,4 @@
-import { MataPelajaran, Question, Siswa, HasilUjian } from '../types';
+import { MataPelajaran, Question, Siswa, HasilUjian, RiwayatPaketSoal } from '../types';
 
 export const DEFAULT_MAPEL: MataPelajaran[] = [
   {
@@ -299,5 +299,84 @@ export const DEFAULT_HASIL: HasilUjian[] = [
     status_koreksi: 'SELESAI',
     pelanggaran_curang: 0,
     durasi_menit: 29,
+  }
+];
+
+export const DEFAULT_RIWAYAT_PAKET: RiwayatPaketSoal[] = [
+  {
+    id_paket: 'PKT-2026-001',
+    timestamp: '2026-09-21 14:30',
+    topik: 'Operasi Pecahan & Perbandingan Nilai',
+    prompt_tambahan: 'Fokus pada soal kontekstual kehidupan sehari-hari (belanja dan pembagian kue)',
+    tingkat: 'SD / MI',
+    kelas: 'Kelas 5',
+    id_mapel_target: 'MAT-03',
+    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    bentuk_soal: 'Campuran',
+    jumlah_soal: 3,
+    soal_list: [
+      {
+        id_soal: 'RP01',
+        id_mapel: 'MAT-03',
+        jenis_soal: 'PG',
+        pertanyaan: 'Ibu memiliki kue bolu dan memotongnya menjadi 8 bagian sama besar. Jika adik memakan 2 bagian dan kakak memakan 3 bagian, berapa bagian kue yang tersisa?',
+        opsi_json: ['1/8 bagian', '2/8 bagian', '3/8 bagian', '5/8 bagian'],
+        kunci_jawaban_json: 'C',
+        bobot: 1,
+        pembahasan: 'Total kue = 8/8. Yang dimakan = 2/8 + 3/8 = 5/8. Sisa = 8/8 - 5/8 = 3/8 bagian.',
+      },
+      {
+        id_soal: 'RP02',
+        id_mapel: 'MAT-03',
+        jenis_soal: 'PGK',
+        pertanyaan: 'Manakah dari pecahan berikut yang memiliki nilai setara dengan 1/2? (Pilih semua jawaban yang benar)',
+        opsi_json: ['2/4', '3/6', '4/8', '5/12'],
+        kunci_jawaban_json: ['2/4', '3/6', '4/8'],
+        bobot: 2,
+        pembahasan: '2/4 = 1/2, 3/6 = 1/2, 4/8 = 1/2. Sedangkan 5/12 tidak sama dengan 1/2.',
+      },
+      {
+        id_soal: 'RP03',
+        id_mapel: 'MAT-03',
+        jenis_soal: 'IS',
+        pertanyaan: 'Bentuk desimal paling sederhana dari pecahan 3/4 adalah... (Tuliskan dengan koma atau titik)',
+        kunci_jawaban_json: ['0.75', '0,75'],
+        bobot: 1,
+        pembahasan: '3 dibagi 4 = 0,75.',
+      }
+    ]
+  },
+  {
+    id_paket: 'PKT-2026-002',
+    timestamp: '2026-09-20 09:15',
+    topik: 'Adaptasi Morfologi & Fisiologi Hewan',
+    prompt_tambahan: 'Soal AKM Literasi Sains tentang paruh burung dan adaptasi gurun',
+    tingkat: 'SD / MI',
+    kelas: 'Kelas 5',
+    id_mapel_target: 'IPA-05',
+    nama_mapel: 'IPA - Ekosistem & Adaptasi Hewan',
+    bentuk_soal: 'Campuran',
+    jumlah_soal: 2,
+    soal_list: [
+      {
+        id_soal: 'RP04',
+        id_mapel: 'IPA-05',
+        jenis_soal: 'PG',
+        pertanyaan: 'Bentuk paruh burung kolibri yang panjang dan ramping berfungsi khusus untuk...',
+        opsi_json: ['Merobek daging mangsa', 'Menghisap nektar di dasar bunga', 'Memecah biji-bijian keras', 'Menyaring lumpur di air'],
+        kunci_jawaban_json: 'B',
+        bobot: 1,
+        pembahasan: 'Paruh panjang dan runcing kolibri beradaptasi untuk menjangkau kelenjar nektar bunga.',
+      },
+      {
+        id_soal: 'RP05',
+        id_mapel: 'IPA-05',
+        jenis_soal: 'IS',
+        pertanyaan: 'Unta menyimpan cadangan lemak sebagai sumber energi saat perjalanan jauh di bagian tubuh yang bernama...',
+        kunci_jawaban_json: ['punuk', 'Punuk'],
+        bobot: 1,
+        pembahasan: 'Punuk unta menyimpan cadangan lemak yang dapat diubah menjadi energi dan cairan metabolik.',
+      }
+    ]
   }
 ];

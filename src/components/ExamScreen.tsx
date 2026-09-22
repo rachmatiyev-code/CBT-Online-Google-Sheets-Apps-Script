@@ -269,19 +269,21 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
 
             {/* Optional Question Image */}
             {currentQuestion.url_gambar && (
-              <div className="mb-6 relative group rounded-xl overflow-hidden border border-slate-800 bg-slate-950/60 max-w-md">
+              <div className="mb-6 relative group rounded-2xl overflow-hidden border border-slate-800 bg-slate-950/70 max-w-lg shadow-lg">
                 <img
                   src={currentQuestion.url_gambar}
                   alt="Ilustrasi Soal"
-                  className="w-full max-h-64 object-contain mx-auto"
+                  referrerPolicy="no-referrer"
+                  onClick={() => setLightboxImage(currentQuestion.url_gambar || null)}
+                  className="w-full max-h-72 object-contain mx-auto cursor-zoom-in transition-transform duration-200 group-hover:scale-[1.01]"
                 />
                 <button
                   type="button"
                   onClick={() => setLightboxImage(currentQuestion.url_gambar || null)}
-                  className="absolute bottom-2 right-2 p-1.5 rounded-lg bg-slate-900/80 text-white hover:bg-slate-900 text-xs flex items-center space-x-1"
+                  className="absolute bottom-2.5 right-2.5 px-2.5 py-1.5 rounded-xl bg-slate-900/90 text-white hover:bg-emerald-600 text-xs font-medium flex items-center space-x-1.5 shadow-md backdrop-blur-sm transition"
                 >
                   <Maximize2 className="w-3.5 h-3.5" />
-                  <span>Perbesar</span>
+                  <span>Perbesar Gambar</span>
                 </button>
               </div>
             )}
@@ -714,6 +716,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
             <img
               src={lightboxImage}
               alt="Perbesaran Gambar Soal"
+              referrerPolicy="no-referrer"
               className="w-full max-h-[80vh] object-contain rounded-xl"
             />
           </div>

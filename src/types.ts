@@ -53,6 +53,16 @@ export interface HasilUjian {
   durasi_menit: number;
 }
 
+export interface DistraktorInfo {
+  opsi: string;
+  pemilih_total: number;
+  persentase: number;
+  pemilih_atas: number;
+  pemilih_bawah: number;
+  is_kunci: boolean;
+  status: 'Kunci' | 'Efektif' | 'Lemah' | 'Menyesatkan';
+}
+
 export interface AnalisisItem {
   id_soal: string;
   id_mapel: string;
@@ -65,7 +75,22 @@ export interface AnalisisItem {
   kategori_D: 'Sangat Baik' | 'Baik' | 'Perlu Revisi' | 'Buang / Perbaiki';
   rekomendasi: string;
   jumlah_peserta: number;
+  distraktor?: DistraktorInfo[];
+}
+
+export interface RiwayatPaketSoal {
+  id_paket: string;
+  timestamp: string;
+  topik: string;
+  prompt_tambahan?: string;
+  tingkat: string;
+  kelas: string;
+  id_mapel_target: string;
+  nama_mapel: string;
+  bentuk_soal: string;
+  jumlah_soal: number;
+  soal_list: Question[];
 }
 
 export type ViewMode = 'login' | 'ujian' | 'hasil' | 'admin';
-export type AdminTab = 'sheets' | 'analisis' | 'ai-generator' | 'gas-setup' | 'hasil-rekap';
+export type AdminTab = 'sheets' | 'analisis' | 'ai-generator' | 'riwayat-soal' | 'share-link' | 'gas-setup' | 'hasil-rekap' | 'api-key';

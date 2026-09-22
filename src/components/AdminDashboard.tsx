@@ -6,13 +6,18 @@ import {
   HasilUjian, 
   AdminTab,
   AnalisisItem,
-  QuestionType 
+  QuestionType,
+  RiwayatPaketSoal
 } from '../types';
 import { 
   hitungAnalisisButirSoal, 
   GAS_CODE_GS, 
   getGasWebappUrl, 
-  setGasWebappUrl 
+  setGasWebappUrl,
+  getRiwayatPaketSoal,
+  saveRiwayatPaketSoal,
+  tambahRiwayatPaketSoal,
+  hapusRiwayatPaketSoal
 } from '../services/gasService';
 import { 
   Table, 
@@ -34,8 +39,23 @@ import {
   HelpCircle,
   ShieldCheck,
   Zap,
-  Globe
+  Globe,
+  Edit3,
+  Share2,
+  History,
+  UserPlus,
+  Key,
+  Image as ImageIcon,
+  Maximize2,
+  X
 } from 'lucide-react';
+import { EnhancedItemAnalysis } from './admin/EnhancedItemAnalysis';
+import { AiGeneratorTab } from './admin/AiGeneratorTab';
+import { QuestionHistoryTab } from './admin/QuestionHistoryTab';
+import { ShareLinkModal } from './admin/ShareLinkModal';
+import { QuestionEditModal } from './admin/QuestionEditModal';
+import { StudentCrudModal } from './admin/StudentCrudModal';
+import { GeminiApiKeyTab } from './admin/GeminiApiKeyTab';
 
 interface AdminDashboardProps {
   mapelList: MataPelajaran[];
@@ -63,53 +83,169 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<AdminTab>('sheets');
   const [activeSheetTab, setActiveSheetTab] = useState<'MataPelajaran' | 'BankSoal' | 'DataSiswa' | 'HasilUjian'>('MataPelajaran');
   const [selectedMapelFilter, setSelectedMapelFilter] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [searchSoalTerm, setSearchSoalTerm] = useState<string>('');
+  const [searchSiswaTerm, setSearchSiswaTerm] = useState<string>('');
+
+  // Riwayat Paket Soal State
+  const [historyList, setHistoryList] = useState<RiwayatPaketSoal[]>(() => getRiwayatPaketSoal());
+
+  // Question CRUD Modal State
+  const [isQuestionModalOpen, setIsQuestionModalOpen] = useState<boolean>(false);
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [deletingQuestion, setDeletingQuestion] = useState<Question | null>(null);
+  const [tableLightboxImage, setTableLightboxImage] = useState<string | null>(null);
+
+  // Student CRUD Modal State
+  const [isStudentModalOpen, setIsStudentModalOpen] = useState<boolean>(false);
+  const [editingStudent, setEditingStudent] = useState<Siswa | null>(null);
 
   // GAS Setup State
   const [gasUrlInput, setGasUrlInput] = useState<string>(getGasWebappUrl());
   const [copyCodeSuccess, setCopyCodeSuccess] = useState<boolean>(false);
   const [pingStatus, setPingStatus] = useState<{ loading: boolean; success?: boolean; message?: string } | null>(null);
 
-  // AI Generator Form State
-  const [aiTopic, setAiTopic] = useState<string>('Operasi Perkalian dan Pembagian');
-  const [aiMapelId, setAiMapelId] = useState<string>(mapelList[0]?.id_mapel || 'MAT-03');
-  const [aiGrade, setAiGrade] = useState<string>('3 SD');
-  const [aiCount, setAiCount] = useState<number>(3);
-  const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
-  const [aiGeneratedSuccess, setAiGeneratedSuccess] = useState<string | null>(null);
-
-  // New Question Modal / State
-  const [showAddQuestionModal, setShowAddQuestionModal] = useState<boolean>(false);
-  const [newQuestionForm, setNewQuestionForm] = useState<{
-    id_mapel: string;
-    jenis_soal: QuestionType;
-    pertanyaan: string;
-    url_gambar: string;
-    opsi_a: string;
-    opsi_b: string;
-    opsi_c: string;
-    opsi_d: string;
-    kunci: string;
-    bobot: number;
-    pembahasan: string;
-  }>({
-    id_mapel: mapelList[0]?.id_mapel || 'MAT-03',
-    jenis_soal: 'PG',
-    pertanyaan: '',
-    url_gambar: '',
-    opsi_a: '',
-    opsi_b: '',
-    opsi_c: '',
-    opsi_d: '',
-    kunci: 'A',
-    bobot: 1,
-    pembahasan: '',
-  });
-
-  // Calculate Item Analysis
+  // Calculate Item Analysis (P, D & Distractor analysis)
   const analisisData: AnalisisItem[] = hitungAnalisisButirSoal(
     selectedMapelFilter === 'all' ? undefined : selectedMapelFilter
   );
+
+  // Toggle Subject Active Status
+  const handleToggleMapelStatus = (id: string) => {
+    const updated = mapelList.map(m => {
+      if (m.id_mapel === id) {
+        return { ...m, status_aktif: !m.status_aktif };
+      }
+      return m;
+    });
+    onUpdateMapel(updated);
+  };
+
+  // --- QUESTION CRUD HANDLERS ---
+  const handleOpenAddQuestion = () => {
+    setEditingQuestion(null);
+    setIsQuestionModalOpen(true);
+  };
+
+  const handleOpenEditQuestion = (soal: Question) => {
+    setEditingQuestion(soal);
+    setIsQuestionModalOpen(true);
+  };
+
+  const handleSaveQuestion = (savedQuestion: Question) => {
+    const exists = soalList.some(s => s.id_soal === savedQuestion.id_soal);
+    let updated: Question[];
+    if (exists) {
+      updated = soalList.map(s => s.id_soal === savedQuestion.id_soal ? savedQuestion : s);
+    } else {
+      updated = [savedQuestion, ...soalList];
+    }
+    onUpdateSoal(updated);
+    setIsQuestionModalOpen(false);
+    setEditingQuestion(null);
+  };
+
+  const handleDeleteQuestion = (id: string) => {
+    if (confirm(`Yakin ingin menghapus soal dengan ID "${id}" dari Bank Soal?`)) {
+      onUpdateSoal(soalList.filter(s => s.id_soal !== id));
+    }
+  };
+
+  // --- STUDENT CRUD HANDLERS ---
+  const handleOpenAddStudent = () => {
+    setEditingStudent(null);
+    setIsStudentModalOpen(true);
+  };
+
+  const handleOpenEditStudent = (siswa: Siswa) => {
+    setEditingStudent(siswa);
+    setIsStudentModalOpen(true);
+  };
+
+  const handleSaveStudent = (savedSiswa: Siswa) => {
+    const exists = siswaList.some(s => s.nisn === savedSiswa.nisn);
+    let updated: Siswa[];
+    if (exists) {
+      updated = siswaList.map(s => s.nisn === savedSiswa.nisn ? savedSiswa : s);
+    } else {
+      updated = [...siswaList, savedSiswa];
+    }
+    onUpdateSiswa(updated);
+    setIsStudentModalOpen(false);
+    setEditingStudent(null);
+  };
+
+  const handleDeleteStudent = (nisn: string) => {
+    if (confirm(`Yakin ingin menghapus data siswa dengan NISN "${nisn}"?`)) {
+      onUpdateSiswa(siswaList.filter(s => s.nisn !== nisn));
+    }
+  };
+
+  // --- AI GENERATOR HANDLERS ---
+  const handleAddAiQuestions = (newQuestions: Question[]) => {
+    onUpdateSoal([...soalList, ...newQuestions]);
+  };
+
+  const handleSaveAiHistory = (paket: RiwayatPaketSoal) => {
+    tambahRiwayatPaketSoal(paket);
+    setHistoryList(getRiwayatPaketSoal());
+  };
+
+  // --- RIWAYAT PAKET SOAL HANDLERS ---
+  const handleDeployPackage = (paket: RiwayatPaketSoal, targetMapelId: string, replaceExisting: boolean) => {
+    const preparedQuestions = paket.soal_list.map((s, idx) => ({
+      ...s,
+      id_soal: `S-${targetMapelId}-${Date.now().toString().slice(-4)}${idx + 1}`,
+      id_mapel: targetMapelId,
+    }));
+
+    let updated: Question[];
+    if (replaceExisting) {
+      updated = [...soalList.filter(s => s.id_mapel !== targetMapelId), ...preparedQuestions];
+    } else {
+      updated = [...soalList, ...preparedQuestions];
+    }
+    onUpdateSoal(updated);
+  };
+
+  const handleDeletePackage = (idPaket: string) => {
+    hapusRiwayatPaketSoal(idPaket);
+    setHistoryList(getRiwayatPaketSoal());
+  };
+
+  const handleCreatePackageFromBank = (topik: string, idMapel: string) => {
+    const targetMapel = mapelList.find(m => m.id_mapel === idMapel);
+    const questionsForMapel = soalList.filter(s => s.id_mapel === idMapel);
+
+    if (questionsForMapel.length === 0) {
+      alert(`Tidak ada butir soal pada mata pelajaran ${idMapel} untuk dijadikan paket riwayat.`);
+      return;
+    }
+
+    const newPackage: RiwayatPaketSoal = {
+      id_paket: `PKT-${Date.now().toString().slice(-5)}`,
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      topik: topik || `Paket Soal ${targetMapel?.nama_mapel || idMapel}`,
+      tingkat: 'SD / SMP / SMA',
+      kelas: targetMapel?.kelas || 'Semua Kelas',
+      id_mapel_target: idMapel,
+      nama_mapel: targetMapel?.nama_mapel || idMapel,
+      bentuk_soal: 'Campuran',
+      jumlah_soal: questionsForMapel.length,
+      soal_list: questionsForMapel,
+    };
+
+    tambahRiwayatPaketSoal(newPackage);
+    setHistoryList(getRiwayatPaketSoal());
+  };
+
+  // --- ITEM ANALYSIS EDIT TRIGGER ---
+  const handleEditQuestionFromAnalysis = (idSoal: string) => {
+    const q = soalList.find(s => s.id_soal === idSoal);
+    if (q) {
+      setEditingQuestion(q);
+      setIsQuestionModalOpen(true);
+    }
+  };
 
   // Copy code helper
   const handleCopyGasCode = () => {
@@ -135,125 +271,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       } else {
         setPingStatus({ loading: false, success: false, message: data.message || 'Respon tidak valid.' });
       }
-    } catch (err: any) {
-      // Due to browser CORS or iframe redirects, Google Apps Script returns redirect which might get opaque
+    } catch {
       setPingStatus({ 
         loading: false, 
         success: true, 
-        message: 'URL berhasil disimpan! (Catatan: Google Apps Script Web App siap menerima permintaan doGet & doPost).' 
+        message: 'URL berhasil disimpan! Google Apps Script Web App siap menerima permintaan doGet & doPost.' 
       });
     }
-  };
-
-  // Toggle Subject Active Status
-  const handleToggleMapelStatus = (id: string) => {
-    const updated = mapelList.map(m => {
-      if (m.id_mapel === id) {
-        return { ...m, status_aktif: !m.status_aktif };
-      }
-      return m;
-    });
-    onUpdateMapel(updated);
-  };
-
-  // Save new question
-  const handleSaveNewQuestion = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newId = 'S' + Date.now().toString().slice(-4);
-    
-    let opsiJson: any = null;
-    let kunciJson: any = newQuestionForm.kunci;
-
-    if (newQuestionForm.jenis_soal === 'PG' || newQuestionForm.jenis_soal === 'PGK') {
-      opsiJson = [newQuestionForm.opsi_a, newQuestionForm.opsi_b, newQuestionForm.opsi_c, newQuestionForm.opsi_d].filter(Boolean);
-      if (newQuestionForm.jenis_soal === 'PGK') {
-        kunciJson = newQuestionForm.kunci.split(',').map(s => s.trim());
-      }
-    } else if (newQuestionForm.jenis_soal === 'IS') {
-      kunciJson = newQuestionForm.kunci.split(',').map(s => s.trim());
-    }
-
-    const created: Question = {
-      id_soal: newId,
-      id_mapel: newQuestionForm.id_mapel,
-      jenis_soal: newQuestionForm.jenis_soal,
-      pertanyaan: newQuestionForm.pertanyaan,
-      url_gambar: newQuestionForm.url_gambar || undefined,
-      opsi_json: opsiJson,
-      kunci_jawaban_json: kunciJson,
-      bobot: Number(newQuestionForm.bobot) || 1,
-      pembahasan: newQuestionForm.pembahasan || undefined,
-    };
-
-    onUpdateSoal([...soalList, created]);
-    setShowAddQuestionModal(false);
-  };
-
-  // Delete question
-  const handleDeleteQuestion = (id: string) => {
-    if (confirm('Yakin ingin menghapus soal ini dari Bank Soal?')) {
-      onUpdateSoal(soalList.filter(s => s.id_soal !== id));
-    }
-  };
-
-  // AI Generation simulation (conforming to Gemini API guidelines in prompt transcript)
-  const handleGenerateAiQuestions = () => {
-    setIsGeneratingAi(true);
-    setAiGeneratedSuccess(null);
-
-    setTimeout(() => {
-      const generatedBatch: Question[] = [
-        {
-          id_soal: 'AI' + Date.now().toString().slice(-3) + '1',
-          id_mapel: aiMapelId,
-          jenis_soal: 'PG',
-          pertanyaan: `[AI Gemini] Dari topik "${aiTopic}", jika seorang petani memiliki 24 karung beras dan setiap karung beratnya 5 kg, berapakah berat keseluruhan beras tersebut?`,
-          opsi_json: ['100 kg', '110 kg', '120 kg', '140 kg'],
-          kunci_jawaban_json: 'C',
-          bobot: 1,
-          pembahasan: '24 x 5 kg = 120 kg.',
-        },
-        {
-          id_soal: 'AI' + Date.now().toString().slice(-3) + '2',
-          id_mapel: aiMapelId,
-          jenis_soal: 'PGK',
-          pertanyaan: `[AI Gemini] Manakah pernyataan operasi matematika berikut yang menghasilkan angka 36? (Pilih semua yang benar)`,
-          opsi_json: ['6 x 6', '9 x 4', '18 x 2', '7 x 5'],
-          kunci_jawaban_json: ['6 x 6', '9 x 4', '18 x 2'],
-          bobot: 2,
-          pembahasan: '6x6=36, 9x4=36, 18x2=36, sedangkan 7x5=35.',
-        },
-        {
-          id_soal: 'AI' + Date.now().toString().slice(-3) + '3',
-          id_mapel: aiMapelId,
-          jenis_soal: 'IS',
-          pertanyaan: `[AI Gemini] 81 dibagi 9 sama dengan... (Tulis hanya angka)`,
-          kunci_jawaban_json: ['9', 'sembilan'],
-          bobot: 1,
-          pembahasan: '81 : 9 = 9.',
-        }
-      ];
-
-      onUpdateSoal([...soalList, ...generatedBatch]);
-      setIsGeneratingAi(false);
-      setAiGeneratedSuccess(`3 Soal baru tentang "${aiTopic}" berhasil digenerate oleh Gemini AI dan langsung disimpan ke Tab BankSoal!`);
-    }, 1200);
   };
 
   // Export current active sheet to CSV
   const handleExportCsv = () => {
     let rows: any[] = [];
-    let filename = `${activeSheetTab}.csv`;
+    const filename = `${activeSheetTab}.csv`;
 
     if (activeSheetTab === 'MataPelajaran') {
       rows = [
-        ['id_mapel', 'nama_mapel', 'kelas', 'durasi_menit', 'token_akses', 'status_aktif'],
-        ...mapelList.map(m => [m.id_mapel, m.nama_mapel, m.kelas, m.durasi_menit, m.token_akses, m.status_aktif ? 'TRUE' : 'FALSE'])
+        ['id_mapel', 'nama_mapel', 'kelas', 'durasi_menit', 'token_akses', 'kkm', 'status_aktif'],
+        ...mapelList.map(m => [m.id_mapel, m.nama_mapel, m.kelas, m.durasi_menit, m.token_akses, m.kkm, m.status_aktif ? 'TRUE' : 'FALSE'])
       ];
     } else if (activeSheetTab === 'BankSoal') {
       rows = [
-        ['id_soal', 'id_mapel', 'jenis_soal', 'pertanyaan', 'url_gambar', 'opsi_json', 'kunci_jawaban_json', 'bobot'],
-        ...soalList.map(s => [s.id_soal, s.id_mapel, s.jenis_soal, s.pertanyaan, s.url_gambar || '', JSON.stringify(s.opsi_json || ''), JSON.stringify(s.kunci_jawaban_json), s.bobot])
+        ['id_soal', 'id_mapel', 'jenis_soal', 'pertanyaan', 'url_gambar', 'opsi_json', 'kunci_jawaban_json', 'bobot', 'pembahasan'],
+        ...soalList.map(s => [s.id_soal, s.id_mapel, s.jenis_soal, s.pertanyaan, s.url_gambar || '', JSON.stringify(s.opsi_json || ''), JSON.stringify(s.kunci_jawaban_json), s.bobot, s.pembahasan || ''])
       ];
     } else if (activeSheetTab === 'DataSiswa') {
       rows = [
@@ -262,8 +302,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ];
     } else if (activeSheetTab === 'HasilUjian') {
       rows = [
-        ['id_hasil', 'timestamp', 'nisn', 'nama_siswa', 'kelas', 'id_mapel', 'total_skor', 'nilai_akhir', 'status_koreksi'],
-        ...hasilList.map(h => [h.id_hasil, h.timestamp, h.nisn, h.nama_siswa, h.kelas, h.id_mapel, h.skor_total, h.nilai_akhir, h.status_koreksi])
+        ['id_hasil', 'timestamp', 'nisn', 'nama_siswa', 'kelas', 'id_mapel', 'skor_total', 'total_bobot', 'nilai_akhir', 'pelanggaran_curang', 'status_koreksi'],
+        ...hasilList.map(h => [h.id_hasil, h.timestamp, h.nisn, h.nama_siswa, h.kelas, h.id_mapel, h.skor_total, h.total_bobot, h.nilai_akhir, h.pelanggaran_curang, h.status_koreksi])
       ];
     }
 
@@ -277,6 +317,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     document.body.removeChild(link);
   };
 
+  // Filtered Soal
+  const filteredSoal = soalList.filter(s => {
+    if (selectedMapelFilter !== 'all' && s.id_mapel !== selectedMapelFilter) {
+      return false;
+    }
+    if (searchSoalTerm.trim()) {
+      const q = searchSoalTerm.toLowerCase();
+      return (
+        s.id_soal.toLowerCase().includes(q) ||
+        s.pertanyaan.toLowerCase().includes(q) ||
+        s.id_mapel.toLowerCase().includes(q) ||
+        s.jenis_soal.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  // Filtered Siswa
+  const filteredSiswa = siswaList.filter(st => {
+    if (searchSiswaTerm.trim()) {
+      const q = searchSiswaTerm.toLowerCase();
+      return (
+        st.nisn.toLowerCase().includes(q) ||
+        st.nama_siswa.toLowerCase().includes(q) ||
+        st.kelas.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-950 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -288,14 +358,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <span className="text-xs font-bold px-2.5 py-1 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
                 PANEL KONTROL GURU & PENGUJI
               </span>
-              <span className="text-xs text-slate-400">• Google Sheets Database Engine</span>
+              <span className="text-xs text-slate-400">• Google Sheets CBT Engine</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-white mt-1">
               Pusat Manajemen CBT & Analisis Butir Soal
             </h1>
           </div>
 
-          {/* Tab Selector */}
+          {/* Tab Navigation */}
           <div className="flex flex-wrap items-center bg-slate-950 p-1.5 rounded-2xl border border-slate-800 gap-1">
             <button
               onClick={() => setActiveTab('sheets')}
@@ -334,6 +404,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('riwayat-soal')}
+              className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
+                activeTab === 'riwayat-soal'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <History className="w-3.5 h-3.5 text-teal-300" />
+              <span>Riwayat Soal</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('share-link')}
+              className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
+                activeTab === 'share-link'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Bagi Link Siswa</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('gas-setup')}
               className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
                 activeTab === 'gas-setup'
@@ -344,18 +438,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <FileCode2 className="w-3.5 h-3.5" />
               <span>Script Google Apps</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('api-key')}
+              className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
+                activeTab === 'api-key'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Key className="w-3.5 h-3.5 text-amber-300" />
+              <span>API Key Gemini</span>
+            </button>
           </div>
         </div>
 
         {/* ============================================================ */}
-        {/* TAB 1: INTERACTIVE GOOGLE SHEETS SPREADSHEET SIMULATOR        */}
+        {/* TAB 1: DATABASE GOOGLE SHEETS SPREADSHEET                     */}
         {/* ============================================================ */}
         {activeTab === 'sheets' && (
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
             
             {/* Sheet Tabs Bar (MataPelajaran, BankSoal, DataSiswa, HasilUjian) */}
             <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {(['MataPelajaran', 'BankSoal', 'DataSiswa', 'HasilUjian'] as const).map((tab) => (
                   <button
                     key={tab}
@@ -367,7 +473,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     }`}
                   >
                     <span>Tab "{tab}"</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-300">
                       {tab === 'MataPelajaran' && mapelList.length}
                       {tab === 'BankSoal' && soalList.length}
                       {tab === 'DataSiswa' && siswaList.length}
@@ -377,15 +483,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 ))}
               </div>
 
-              {/* Actions: Add question, Export CSV, Reset */}
-              <div className="flex items-center space-x-2">
+              {/* Action Buttons: Add Soal, Add Siswa, Export, Reset */}
+              <div className="flex flex-wrap items-center gap-2">
                 {activeSheetTab === 'BankSoal' && (
                   <button
-                    onClick={() => setShowAddQuestionModal(true)}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center space-x-1.5 transition"
+                    onClick={handleOpenAddQuestion}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center space-x-1.5 transition shadow-sm"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Tambah Baris Soal</span>
+                    <span>Tambah Soal Baru</span>
+                  </button>
+                )}
+
+                {activeSheetTab === 'DataSiswa' && (
+                  <button
+                    onClick={handleOpenAddStudent}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center space-x-1.5 transition shadow-sm"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>Tambah Data Siswa</span>
                   </button>
                 )}
 
@@ -399,11 +515,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <button
                   onClick={() => {
-                    if (confirm('Kembalikan seluruh data ke contoh awal pabrik?')) {
+                    if (confirm('Kembalikan seluruh data database ke contoh awal bawaan pabrik?')) {
                       onResetDatabase();
+                      setHistoryList(getRiwayatPaketSoal());
                     }
                   }}
-                  title="Reset Contoh Data Database"
+                  title="Reset Data Database ke Bawaan Pabrik"
                   className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 transition"
                 >
                   <RotateCcw className="w-4 h-4" />
@@ -466,79 +583,189 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* TAB CONTENT: TAB BANKSOAL */}
             {activeSheetTab === 'BankSoal' && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="bg-slate-950 text-slate-400 uppercase font-mono tracking-wider border-b border-slate-800">
-                    <tr>
-                      <th className="p-3">id_soal</th>
-                      <th className="p-3">id_mapel</th>
-                      <th className="p-3">jenis_soal</th>
-                      <th className="p-3">pertanyaan</th>
-                      <th className="p-3">opsi_json</th>
-                      <th className="p-3">kunci_jawaban_json</th>
-                      <th className="p-3">bobot</th>
-                      <th className="p-3 text-right">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 font-mono">
-                    {soalList.map((s) => (
-                      <tr key={s.id_soal} className="hover:bg-slate-800/40">
-                        <td className="p-3 font-bold text-white">{s.id_soal}</td>
-                        <td className="p-3 text-emerald-400">{s.id_mapel}</td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-200">
-                            {s.jenis_soal}
-                          </span>
-                        </td>
-                        <td className="p-3 font-sans max-w-xs truncate text-slate-200" title={s.pertanyaan}>
-                          {s.pertanyaan}
-                        </td>
-                        <td className="p-3 text-slate-400 max-w-xs truncate" title={JSON.stringify(s.opsi_json)}>
-                          {s.opsi_json ? JSON.stringify(s.opsi_json) : '-'}
-                        </td>
-                        <td className="p-3 text-amber-300 font-bold max-w-xs truncate">
-                          {typeof s.kunci_jawaban_json === 'object' ? JSON.stringify(s.kunci_jawaban_json) : String(s.kunci_jawaban_json)}
-                        </td>
-                        <td className="p-3">{s.bobot}</td>
-                        <td className="p-3 text-right font-sans">
-                          <button
-                            onClick={() => handleDeleteQuestion(s.id_soal)}
-                            className="p-1 rounded text-slate-400 hover:text-rose-400"
-                            title="Hapus Soal"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
+              <div className="space-y-4">
+                {/* BankSoal Filter & Search Controls */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800">
+                  <div className="flex items-center space-x-2">
+                    <Filter className="w-4 h-4 text-slate-400" />
+                    <label className="text-xs text-slate-400">Mapel:</label>
+                    <select
+                      value={selectedMapelFilter}
+                      onChange={(e) => setSelectedMapelFilter(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white"
+                    >
+                      <option value="all">Semua Mata Pelajaran ({soalList.length})</option>
+                      {mapelList.map((m) => {
+                        const cnt = soalList.filter(s => s.id_mapel === m.id_mapel).length;
+                        return (
+                          <option key={m.id_mapel} value={m.id_mapel}>
+                            {m.id_mapel} - {m.nama_mapel} ({cnt} soal)
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center space-x-2 flex-1 sm:max-w-xs">
+                    <Search className="w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Cari ID, pertanyaan, jenis..."
+                      value={searchSoalTerm}
+                      onChange={(e) => setSearchSoalTerm(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950 text-slate-400 uppercase font-mono tracking-wider border-b border-slate-800">
+                      <tr>
+                        <th className="p-3">id_soal</th>
+                        <th className="p-3">id_mapel</th>
+                        <th className="p-3">jenis_soal</th>
+                        <th className="p-3">gambar</th>
+                        <th className="p-3">pertanyaan</th>
+                        <th className="p-3">opsi_json</th>
+                        <th className="p-3">kunci_jawaban_json</th>
+                        <th className="p-3">bobot</th>
+                        <th className="p-3 text-right">Aksi</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                      {filteredSoal.map((s) => (
+                        <tr key={s.id_soal} className="hover:bg-slate-800/40">
+                          <td className="p-3 font-bold text-white">{s.id_soal}</td>
+                          <td className="p-3 text-emerald-400">{s.id_mapel}</td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-200">
+                              {s.jenis_soal}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            {s.url_gambar ? (
+                              <button
+                                type="button"
+                                onClick={() => setTableLightboxImage(s.url_gambar || null)}
+                                className="relative group w-10 h-10 rounded-lg overflow-hidden border border-slate-700 bg-slate-950 flex items-center justify-center shadow-sm hover:border-emerald-500 transition"
+                                title="Klik untuk memperbesar gambar"
+                              >
+                                <img
+                                  src={s.url_gambar}
+                                  alt="Stimulus Soal"
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover"
+                                />
+                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white">
+                                  <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
+                                </div>
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-slate-600 font-sans">-</span>
+                            )}
+                          </td>
+                          <td className="p-3 font-sans max-w-xs truncate text-slate-200" title={s.pertanyaan}>
+                            {s.pertanyaan}
+                          </td>
+                          <td className="p-3 text-slate-400 max-w-xs truncate" title={JSON.stringify(s.opsi_json)}>
+                            {s.opsi_json ? JSON.stringify(s.opsi_json) : '-'}
+                          </td>
+                          <td className="p-3 text-amber-300 font-bold max-w-xs truncate">
+                            {typeof s.kunci_jawaban_json === 'object' ? JSON.stringify(s.kunci_jawaban_json) : String(s.kunci_jawaban_json)}
+                          </td>
+                          <td className="p-3">{s.bobot}</td>
+                          <td className="p-3 text-right font-sans whitespace-nowrap">
+                            <div className="flex items-center justify-end space-x-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditQuestion(s)}
+                                className="px-2.5 py-1.5 rounded-lg bg-indigo-950/80 text-indigo-300 hover:bg-indigo-600 hover:text-white border border-indigo-800/80 transition flex items-center space-x-1 text-xs font-semibold shadow-sm"
+                                title="Edit Soal & Gambar"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingQuestion(s)}
+                                className="px-2.5 py-1.5 rounded-lg bg-rose-950/80 text-rose-300 hover:bg-rose-600 hover:text-white border border-rose-800/80 transition flex items-center space-x-1 text-xs font-semibold shadow-sm"
+                                title="Hapus Soal dari Bank Soal"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Hapus</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
             {/* TAB CONTENT: TAB DATASISWA */}
             {activeSheetTab === 'DataSiswa' && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="bg-slate-950 text-slate-400 uppercase font-mono tracking-wider border-b border-slate-800">
-                    <tr>
-                      <th className="p-3">nisn</th>
-                      <th className="p-3">nama_siswa</th>
-                      <th className="p-3">kelas</th>
-                      <th className="p-3">pin_siswa</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 font-mono">
-                    {siswaList.map((st) => (
-                      <tr key={st.nisn} className="hover:bg-slate-800/40">
-                        <td className="p-3 font-bold text-white">{st.nisn}</td>
-                        <td className="p-3 font-sans font-semibold text-slate-200">{st.nama_siswa}</td>
-                        <td className="p-3">{st.kelas}</td>
-                        <td className="p-3 text-emerald-400 tracking-widest">{st.pin_siswa}</td>
+              <div className="space-y-4">
+                {/* Search Bar for Siswa */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800">
+                  <div className="text-xs text-slate-400">
+                    Total Siswa Terdaftar: <strong className="text-white">{siswaList.length} Siswa</strong>
+                  </div>
+                  <div className="flex items-center space-x-2 flex-1 sm:max-w-xs">
+                    <Search className="w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Cari NISN, nama, kelas..."
+                      value={searchSiswaTerm}
+                      onChange={(e) => setSearchSiswaTerm(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950 text-slate-400 uppercase font-mono tracking-wider border-b border-slate-800">
+                      <tr>
+                        <th className="p-3">nisn</th>
+                        <th className="p-3">nama_siswa</th>
+                        <th className="p-3">kelas</th>
+                        <th className="p-3">pin_siswa</th>
+                        <th className="p-3 text-right">Aksi</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                      {filteredSiswa.map((st) => (
+                        <tr key={st.nisn} className="hover:bg-slate-800/40">
+                          <td className="p-3 font-bold text-white">{st.nisn}</td>
+                          <td className="p-3 font-sans font-semibold text-slate-200">{st.nama_siswa}</td>
+                          <td className="p-3">{st.kelas}</td>
+                          <td className="p-3 text-emerald-400 tracking-widest">{st.pin_siswa}</td>
+                          <td className="p-3 text-right font-sans">
+                            <div className="flex items-center justify-end space-x-1">
+                              <button
+                                onClick={() => handleOpenEditStudent(st)}
+                                className="p-1.5 rounded-lg bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white transition"
+                                title="Edit Siswa"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteStudent(st.nisn)}
+                                className="p-1.5 rounded-lg bg-rose-600/20 text-rose-400 hover:bg-rose-600 hover:text-white transition"
+                                title="Hapus Siswa"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -596,222 +823,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {/* ============================================================ */}
-        {/* TAB 2: ANALISIS BUTIR SOAL (ITEM ANALYSIS P & D)             */}
+        {/* TAB 2: ANALISIS BUTIR SOAL & DISTRAKTOR (P & D)              */}
         {/* ============================================================ */}
         {activeTab === 'analisis' && (
-          <div className="space-y-6">
-            {/* Header & Filter */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-bold text-white">Analisis Butir Soal (Item Analysis)</h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Pengukuran Tingkat Kesukaran (P) dan Daya Pembeda (D) dengan metode kelompok 27% atas vs 27% bawah.
-                </p>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <label className="text-xs text-slate-400">Filter Mata Pelajaran:</label>
-                <select
-                  value={selectedMapelFilter}
-                  onChange={(e) => setSelectedMapelFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white"
-                >
-                  <option value="all">Semua Mata Pelajaran</option>
-                  {mapelList.map((m) => (
-                    <option key={m.id_mapel} value={m.id_mapel}>
-                      {m.id_mapel} - {m.nama_mapel}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Formula Reference Explanations */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 text-xs">
-                <div className="font-bold text-emerald-400 mb-1">
-                  1. Tingkat Kesukaran (P = Rata-rata Skor / Bobot Max)
-                </div>
-                <div className="text-slate-300 space-y-1">
-                  <p>• <strong>P &gt; 0.70</strong> : Soal Tergolong Mudah</p>
-                  <p>• <strong>0.30 ≤ P ≤ 0.70</strong> : Soal Sedang (Kualitas Ideal)</p>
-                  <p>• <strong>P &lt; 0.30</strong> : Soal Tergolong Sukar</p>
-                </div>
-              </div>
-
-              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 text-xs">
-                <div className="font-bold text-blue-400 mb-1">
-                  2. Daya Pembeda (D = (X̄_atas - X̄_bawah) / Bobot)
-                </div>
-                <div className="text-slate-300 space-y-1">
-                  <p>• <strong>D ≥ 0.40</strong> : Sangat Baik (Simpan permanen)</p>
-                  <p>• <strong>0.30 ≤ D &lt; 0.40</strong> : Baik</p>
-                  <p>• <strong>0.20 ≤ D &lt; 0.30</strong> : Perlu Revisi / Peninjauan Pengecoh</p>
-                  <p>• <strong>D &lt; 0.20</strong> : Buang atau Buat Ulang Soal</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Analisis Table */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-slate-400 uppercase font-mono tracking-wider border-b border-slate-800">
-                  <tr>
-                    <th className="p-3">ID Soal</th>
-                    <th className="p-3">Mapel</th>
-                    <th className="p-3">Jenis</th>
-                    <th className="p-3">Pertanyaan</th>
-                    <th className="p-3 text-center">Tingkat Kesukaran (P)</th>
-                    <th className="p-3 text-center">Daya Pembeda (D)</th>
-                    <th className="p-3">Rekomendasi Butir</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono">
-                  {analisisData.map((item) => (
-                    <tr key={item.id_soal} className="hover:bg-slate-800/40">
-                      <td className="p-3 font-bold text-white">{item.id_soal}</td>
-                      <td className="p-3 text-emerald-400">{item.id_mapel}</td>
-                      <td className="p-3">
-                        <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                          {item.jenis}
-                        </span>
-                      </td>
-                      <td className="p-3 font-sans max-w-xs truncate text-slate-200" title={item.pertanyaan}>
-                        {item.pertanyaan}
-                      </td>
-                      <td className="p-3 text-center">
-                        <div className="font-bold text-white">{item.tingkat_kesukaran_P}</div>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                          item.kategori_P === 'Sedang' 
-                            ? 'bg-blue-500/20 text-blue-400' 
-                            : item.kategori_P === 'Mudah' 
-                              ? 'bg-emerald-500/20 text-emerald-400' 
-                              : 'bg-rose-500/20 text-rose-400'
-                        }`}>
-                          {item.kategori_P}
-                        </span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <div className="font-bold text-white">{item.daya_pembeda_D}</div>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                          item.kategori_D === 'Sangat Baik' 
-                            ? 'bg-emerald-500/20 text-emerald-400 font-bold' 
-                            : item.kategori_D === 'Baik' 
-                              ? 'bg-blue-500/20 text-blue-400' 
-                              : 'bg-amber-500/20 text-amber-400'
-                        }`}>
-                          {item.kategori_D}
-                        </span>
-                      </td>
-                      <td className="p-3 font-sans text-xs">
-                        <span className="text-slate-300 font-medium">{item.rekomendasi}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <EnhancedItemAnalysis
+            analisisData={analisisData}
+            mapelList={mapelList}
+            selectedMapel={selectedMapelFilter}
+            onSelectMapel={setSelectedMapelFilter}
+            onEditQuestion={handleEditQuestionFromAnalysis}
+          />
         )}
 
         {/* ============================================================ */}
-        {/* TAB 3: GENERATOR SOAL AI (GEMINI PROMPT SIMULATION)          */}
+        {/* TAB 3: GENERATOR SOAL AI (GEMINI)                            */}
         {/* ============================================================ */}
         {activeTab === 'ai-generator' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl max-w-3xl mx-auto space-y-6">
-            <div className="flex items-center space-x-3 pb-4 border-b border-slate-800">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">Generator Bank Soal Otomatis (Gemini AI)</h3>
-                <p className="text-xs text-slate-400">
-                  Membuat soal bervariasi (PG, PGK, Isian, Uraian) langsung tersimpan ke Google Sheets
-                </p>
-              </div>
-            </div>
+          <AiGeneratorTab
+            mapelList={mapelList}
+            onAddQuestions={handleAddAiQuestions}
+            onSaveToHistory={handleSaveAiHistory}
+            onOpenApiKeyTab={() => setActiveTab('api-key')}
+          />
+        )}
 
-            {aiGeneratedSuccess && (
-              <div className="p-4 rounded-xl bg-emerald-950/70 border border-emerald-700/70 text-emerald-300 text-xs sm:text-sm flex items-start space-x-2.5">
-                <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
-                <span>{aiGeneratedSuccess}</span>
-              </div>
-            )}
+        {/* ============================================================ */}
+        {/* TAB 4: RIWAYAT PAKET SOAL (DEPLOY ULANG)                     */}
+        {/* ============================================================ */}
+        {activeTab === 'riwayat-soal' && (
+          <QuestionHistoryTab
+            historyList={historyList}
+            mapelList={mapelList}
+            currentBankSoal={soalList}
+            onDeployPackage={handleDeployPackage}
+            onDeletePackage={handleDeletePackage}
+            onCreatePackageFromBank={handleCreatePackageFromBank}
+          />
+        )}
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                  Topik / Materi Pembelajaran
-                </label>
-                <input
-                  type="text"
-                  value={aiTopic}
-                  onChange={(e) => setAiTopic(e.target.value)}
-                  placeholder="Contoh: Ekosistem Hutan Hujan Tropis / Operasi Pecahan Desimal"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                    Mata Pelajaran Target
-                  </label>
-                  <select
-                    value={aiMapelId}
-                    onChange={(e) => setAiMapelId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-xs sm:text-sm text-white"
-                  >
-                    {mapelList.map((m) => (
-                      <option key={m.id_mapel} value={m.id_mapel}>{m.id_mapel} - {m.nama_mapel}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                    Tingkat Kelas
-                  </label>
-                  <input
-                    type="text"
-                    value={aiGrade}
-                    onChange={(e) => setAiGrade(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                    Jumlah Soal
-                  </label>
-                  <select
-                    value={aiCount}
-                    onChange={(e) => setAiCount(Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-sm text-white"
-                  >
-                    <option value={3}>3 Soal (Campuran)</option>
-                    <option value={5}>5 Soal</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="pt-4">
-                <button
-                  type="button"
-                  disabled={isGeneratingAi}
-                  onClick={handleGenerateAiQuestions}
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white font-semibold text-sm flex items-center justify-center space-x-2 shadow-lg transition"
-                >
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>{isGeneratingAi ? 'Gemini AI sedang merancang soal...' : 'Generate & Simpan ke Bank Soal'}</span>
-                </button>
-              </div>
-            </div>
+        {/* ============================================================ */}
+        {/* TAB 5: BAGI LINK SISWA (MODE TERPISAH)                       */}
+        {/* ============================================================ */}
+        {activeTab === 'share-link' && (
+          <div className="max-w-4xl mx-auto">
+            <ShareLinkModal
+              mapelList={mapelList}
+              currentMapelId={selectedMapelFilter === 'all' ? mapelList[0]?.id_mapel : selectedMapelFilter}
+            />
           </div>
         )}
 
         {/* ============================================================ */}
-        {/* TAB 4: GOOGLE APPS SCRIPT (GAS) CODE & SETUP TUTORIAL        */}
+        {/* TAB 6: GOOGLE APPS SCRIPT (GAS) CODE & SETUP TUTORIAL        */}
         {/* ============================================================ */}
         {activeTab === 'gas-setup' && (
           <div className="space-y-6">
@@ -908,148 +971,120 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {/* Modal: Tambah Soal Manual */}
-        {showAddQuestionModal && (
-          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
-              <h3 className="text-lg font-bold text-white mb-1">Tambah Soal Baru ke Bank Soal</h3>
-              <p className="text-xs text-slate-400 mb-5">Data akan otomatis ditambahkan ke tabel BankSoal.</p>
+        {/* ============================================================ */}
+        {/* TAB 7: GEMINI AI API KEY MANAGEMENT                          */}
+        {/* ============================================================ */}
+        {activeTab === 'api-key' && (
+          <GeminiApiKeyTab />
+        )}
 
-              <form onSubmit={handleSaveNewQuestion} className="space-y-4 text-xs">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Mata Pelajaran</label>
-                    <select
-                      value={newQuestionForm.id_mapel}
-                      onChange={(e) => setNewQuestionForm({ ...newQuestionForm, id_mapel: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white"
-                    >
-                      {mapelList.map((m) => (
-                        <option key={m.id_mapel} value={m.id_mapel}>{m.id_mapel} - {m.nama_mapel}</option>
-                      ))}
-                    </select>
-                  </div>
+        {/* Modal: Edit / Tambah Soal Lengkap */}
+        <QuestionEditModal
+          isOpen={isQuestionModalOpen}
+          onClose={() => {
+            setIsQuestionModalOpen(false);
+            setEditingQuestion(null);
+          }}
+          question={editingQuestion}
+          mapelList={mapelList}
+          defaultMapelId={selectedMapelFilter === 'all' ? mapelList[0]?.id_mapel : selectedMapelFilter}
+          onSave={handleSaveQuestion}
+        />
 
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Jenis Bentuk Soal</label>
-                    <select
-                      value={newQuestionForm.jenis_soal}
-                      onChange={(e) => setNewQuestionForm({ ...newQuestionForm, jenis_soal: e.target.value as QuestionType })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white"
-                    >
-                      <option value="PG">PG (Pilihan Ganda)</option>
-                      <option value="PGK">PGK (Kompleks / Checkbox)</option>
-                      <option value="IS">IS (Isian Singkat)</option>
-                      <option value="UR">UR (Uraian / Essay)</option>
-                    </select>
-                  </div>
+        {/* Modal: Edit / Tambah Data Siswa */}
+        <StudentCrudModal
+          isOpen={isStudentModalOpen}
+          onClose={() => {
+            setIsStudentModalOpen(false);
+            setEditingStudent(null);
+          }}
+          siswa={editingStudent}
+          onSave={handleSaveStudent}
+        />
+
+        {/* Modal: Konfirmasi Hapus Soal */}
+        {deletingQuestion && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-11 h-11 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-5 h-5" />
                 </div>
-
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Teks Pertanyaan</label>
-                  <textarea
-                    rows={3}
-                    required
-                    value={newQuestionForm.pertanyaan}
-                    onChange={(e) => setNewQuestionForm({ ...newQuestionForm, pertanyaan: e.target.value })}
-                    placeholder="Tuliskan pertanyaan di sini..."
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white"
-                  />
+                  <h4 className="text-base font-bold text-white">Hapus Butir Soal?</h4>
+                  <p className="text-xs text-slate-400">Soal akan dihapus secara permanen dari Bank Soal aktif.</p>
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">URL Gambar (Opsional)</label>
-                  <input
-                    type="url"
-                    value={newQuestionForm.url_gambar}
-                    onChange={(e) => setNewQuestionForm({ ...newQuestionForm, url_gambar: e.target.value })}
-                    placeholder="https://..."
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white"
-                  />
+              <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800 space-y-2.5 text-xs">
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>ID Soal: <strong className="text-white font-mono">{deletingQuestion.id_soal}</strong></span>
+                  <span className="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-200 font-semibold">{deletingQuestion.jenis_soal}</span>
                 </div>
-
-                {(newQuestionForm.jenis_soal === 'PG' || newQuestionForm.jenis_soal === 'PGK') && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-slate-400 mb-1">Opsi A</label>
-                      <input
-                        type="text"
-                        value={newQuestionForm.opsi_a}
-                        onChange={(e) => setNewQuestionForm({ ...newQuestionForm, opsi_a: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 mb-1">Opsi B</label>
-                      <input
-                        type="text"
-                        value={newQuestionForm.opsi_b}
-                        onChange={(e) => setNewQuestionForm({ ...newQuestionForm, opsi_b: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 mb-1">Opsi C</label>
-                      <input
-                        type="text"
-                        value={newQuestionForm.opsi_c}
-                        onChange={(e) => setNewQuestionForm({ ...newQuestionForm, opsi_c: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 mb-1">Opsi D</label>
-                      <input
-                        type="text"
-                        value={newQuestionForm.opsi_d}
-                        onChange={(e) => setNewQuestionForm({ ...newQuestionForm, opsi_d: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white"
-                      />
-                    </div>
+                <div className="text-slate-300 font-sans line-clamp-3 leading-relaxed">
+                  "{deletingQuestion.pertanyaan}"
+                </div>
+                {deletingQuestion.url_gambar && (
+                  <div className="flex items-center space-x-2 pt-2 border-t border-slate-800">
+                    <img
+                      src={deletingQuestion.url_gambar}
+                      alt="Stimulus Soal"
+                      referrerPolicy="no-referrer"
+                      className="w-10 h-10 object-cover rounded-lg border border-slate-700 shrink-0"
+                    />
+                    <span className="text-[11px] text-amber-400 font-medium">Soal ini memiliki lampiran gambar/ilustrasi.</span>
                   </div>
                 )}
+              </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Kunci Jawaban</label>
-                    <input
-                      type="text"
-                      required
-                      value={newQuestionForm.kunci}
-                      onChange={(e) => setNewQuestionForm({ ...newQuestionForm, kunci: e.target.value })}
-                      placeholder="Contoh: B (atau 'kunci1, kunci2' jika isian/PGK)"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white"
-                    />
-                  </div>
+              <div className="flex items-center justify-end space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeletingQuestion(null)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleDeleteQuestion(deletingQuestion.id_soal);
+                    setDeletingQuestion(null);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-md transition flex items-center space-x-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Ya, Hapus Soal</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Bobot Soal</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={newQuestionForm.bobot}
-                      onChange={(e) => setNewQuestionForm({ ...newQuestionForm, bobot: Number(e.target.value) })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex space-x-3 pt-4 border-t border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddQuestionModal(false)}
-                    className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
-                  >
-                    Simpan ke Spreadsheet
-                  </button>
-                </div>
-              </form>
+        {/* Modal: Perbesar Gambar Soal dari Tabel Bank Soal */}
+        {tableLightboxImage && (
+          <div className="fixed inset-0 z-60 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="relative max-w-4xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-4 shadow-2xl">
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
+                <span className="text-xs font-semibold text-slate-300">
+                  Pratinjau Gambar Soal (Bank Soal)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setTableLightboxImage(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex items-center justify-center max-h-[75vh] overflow-auto rounded-2xl bg-slate-950 p-2">
+                <img
+                  src={tableLightboxImage}
+                  alt="Stimulus Soal Resolusi Penuh"
+                  referrerPolicy="no-referrer"
+                  className="max-h-[70vh] object-contain rounded-xl"
+                />
+              </div>
             </div>
           </div>
         )}

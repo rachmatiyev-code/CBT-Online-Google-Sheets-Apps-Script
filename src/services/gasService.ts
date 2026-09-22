@@ -1,5 +1,5 @@
-import { MataPelajaran, Question, Siswa, HasilUjian, AnalisisItem } from '../types';
-import { DEFAULT_MAPEL, DEFAULT_QUESTIONS, DEFAULT_SISWA, DEFAULT_HASIL } from '../data/defaultData';
+import { MataPelajaran, Question, Siswa, HasilUjian, AnalisisItem, RiwayatPaketSoal, DistraktorInfo } from '../types';
+import { DEFAULT_MAPEL, DEFAULT_QUESTIONS, DEFAULT_SISWA, DEFAULT_HASIL, DEFAULT_RIWAYAT_PAKET } from '../data/defaultData';
 
 const STORAGE_KEYS = {
   MAPEL: 'cbt_sheets_mapel',
@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   SISWA: 'cbt_sheets_siswa',
   HASIL: 'cbt_sheets_hasil',
   GAS_URL: 'cbt_gas_webapp_url',
+  RIWAYAT: 'cbt_sheets_riwayat_paket',
 };
 
 // ============================================================
@@ -383,12 +384,42 @@ export function saveHasilUjian(hasilList: HasilUjian[]): void {
   localStorage.setItem(STORAGE_KEYS.HASIL, JSON.stringify(hasilList));
 }
 
+export function getRiwayatPaketSoal(): RiwayatPaketSoal[] {
+  const data = localStorage.getItem(STORAGE_KEYS.RIWAYAT);
+  if (!data) {
+    localStorage.setItem(STORAGE_KEYS.RIWAYAT, JSON.stringify(DEFAULT_RIWAYAT_PAKET));
+    return DEFAULT_RIWAYAT_PAKET;
+  }
+  try {
+    return JSON.parse(data);
+  } catch {
+    return DEFAULT_RIWAYAT_PAKET;
+  }
+}
+
+export function saveRiwayatPaketSoal(list: RiwayatPaketSoal[]): void {
+  localStorage.setItem(STORAGE_KEYS.RIWAYAT, JSON.stringify(list));
+}
+
+export function tambahRiwayatPaketSoal(paket: RiwayatPaketSoal): void {
+  const current = getRiwayatPaketSoal();
+  const updated = [paket, ...current.filter(p => p.id_paket !== paket.id_paket)];
+  saveRiwayatPaketSoal(updated);
+}
+
+export function hapusRiwayatPaketSoal(id_paket: string): void {
+  const current = getRiwayatPaketSoal();
+  const updated = current.filter(p => p.id_paket !== id_paket);
+  saveRiwayatPaketSoal(updated);
+}
+
 // Reset all to default factory sample data
 export function resetDatabaseToDefault(): void {
   localStorage.setItem(STORAGE_KEYS.MAPEL, JSON.stringify(DEFAULT_MAPEL));
   localStorage.setItem(STORAGE_KEYS.SOAL, JSON.stringify(DEFAULT_QUESTIONS));
   localStorage.setItem(STORAGE_KEYS.SISWA, JSON.stringify(DEFAULT_SISWA));
   localStorage.setItem(STORAGE_KEYS.HASIL, JSON.stringify(DEFAULT_HASIL));
+  localStorage.setItem(STORAGE_KEYS.RIWAYAT, JSON.stringify(DEFAULT_RIWAYAT_PAKET));
 }
 
 // ============================================================
@@ -585,6 +616,66 @@ export function hitungAnalisisButirSoal(idMapel?: string): AnalisisItem[] {
       rekomendasi = 'Daya pembeda rendah/negatif. Sebaiknya ganti atau buat ulang.';
     }
 
+    // Analisis Distraktor / Pengecoh (Khusus Pilihan Ganda)
+    let distraktorList: DistraktorInfo[] | undefined = undefined;
+    if (soal.jenis_soal === 'PG' && Array.isArray(soal.opsi_json)) {
+      const opsiLetters = ['A', 'B', 'C', 'D', 'E'].slice(0, soal.opsi_json.length);
+      const kunciStr = String(soal.kunci_jawaban_json).toUpperCase().trim();
+
+      distraktorList = opsiLetters.map((letter, idx) => {
+        const textOpsi = (soal.opsi_json as string[])[idx] || letter;
+        const isKunci = letter === kunciStr || textOpsi.trim() === String(soal.kunci_jawaban_json).trim();
+
+        let pemilihTotal = 0;
+        let pemilihAtas = 0;
+        let pemilihBawah = 0;
+
+        targetHasil.forEach(h => {
+          const ans = String(h.jawaban_siswa[idSoal] || '').toUpperCase().trim();
+          if (ans === letter || ans === textOpsi.toUpperCase().trim()) {
+            pemilihTotal++;
+          }
+        });
+
+        upperGroup.forEach(h => {
+          const ans = String(h.jawaban_siswa[idSoal] || '').toUpperCase().trim();
+          if (ans === letter || ans === textOpsi.toUpperCase().trim()) {
+            pemilihAtas++;
+          }
+        });
+
+        lowerGroup.forEach(h => {
+          const ans = String(h.jawaban_siswa[idSoal] || '').toUpperCase().trim();
+          if (ans === letter || ans === textOpsi.toUpperCase().trim()) {
+            pemilihBawah++;
+          }
+        });
+
+        const persentase = n > 0 ? Math.round((pemilihTotal / n) * 100) : 0;
+        let status: 'Kunci' | 'Efektif' | 'Lemah' | 'Menyesatkan' = 'Efektif';
+
+        if (isKunci) {
+          status = 'Kunci';
+        } else if (pemilihAtas > pemilihBawah && pemilihAtas > 0) {
+          status = 'Menyesatkan';
+        } else if (persentase >= 5 && pemilihBawah >= pemilihAtas) {
+          status = 'Efektif';
+        } else {
+          status = 'Lemah';
+        }
+
+        return {
+          opsi: `${letter}. ${textOpsi}`,
+          pemilih_total: pemilihTotal,
+          persentase,
+          pemilih_atas: pemilihAtas,
+          pemilih_bawah: pemilihBawah,
+          is_kunci: isKunci,
+          status,
+        };
+      });
+    }
+
     return {
       id_soal: soal.id_soal,
       id_mapel: soal.id_mapel,
@@ -597,6 +688,7 @@ export function hitungAnalisisButirSoal(idMapel?: string): AnalisisItem[] {
       kategori_D,
       rekomendasi,
       jumlah_peserta: n,
+      distraktor: distraktorList,
     };
   });
 }
