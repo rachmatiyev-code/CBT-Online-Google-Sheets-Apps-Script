@@ -11,7 +11,8 @@ import {
   saveHasilUjian, 
   resetDatabaseToDefault,
   hitungSkorOtomatis,
-  getGasWebappUrl
+  getGasWebappUrl,
+  kirimHasilKeGoogleSheets
 } from './services/gasService';
 import { Navbar } from './components/Navbar';
 import { StudentLogin } from './components/StudentLogin';
@@ -127,28 +128,16 @@ export default function App() {
     handleUpdateHasil(updatedHasilList);
     setLatestHasil(newHasil);
 
-    // 5. If live Google Apps Script Web App URL is connected, post payload asynchronously
+    // 5. If live Google Apps Script Web App URL is connected, post payload with text/plain (anti-CORS) to HasilUjian tab
     const targetGasUrl = getGasWebappUrl();
     if (targetGasUrl) {
-      try {
-        fetch(targetGasUrl, {
-          method: 'POST',
-          mode: 'no-cors', // Standard Google Apps Script cross-origin POST handling
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'submitJawaban',
-            id_mapel: activeMapel.id_mapel,
-            nisn: activeSiswa.nisn,
-            nama_siswa: activeSiswa.nama_siswa,
-            kelas: activeSiswa.kelas,
-            durasi_menit: durationMinutes,
-            pelanggaran_curang: violations,
-            jawaban: answers,
-          }),
-        }).catch((err) => console.log('GAS Post notice:', err));
-      } catch (err) {
-        console.log('GAS Post err:', err);
-      }
+      kirimHasilKeGoogleSheets(newHasil, targetGasUrl).then((res) => {
+        if (!res.success) {
+          console.warn('Google Sheets sync warning:', res.message);
+        }
+      }).catch((err) => {
+        console.error('Google Sheets sync err:', err);
+      });
     }
 
     // 6. Navigate to Exam Result view

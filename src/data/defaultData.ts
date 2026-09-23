@@ -1,12 +1,12 @@
-import { MataPelajaran, Question, Siswa, HasilUjian, RiwayatPaketSoal } from '../types';
+import { MataPelajaran, Question, Siswa, HasilUjian, RiwayatPaketSoal, KodeSoalPaket } from '../types';
 
 export const DEFAULT_MAPEL: MataPelajaran[] = [
   {
-    id_mapel: 'MAT-03',
-    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
-    kelas: '3 SD',
+    id_mapel: 'Pendidikan Pancasila',
+    nama_mapel: 'Pendidikan Pancasila',
+    kelas: 'Semua Kelas',
     durasi_menit: 45,
-    token_akses: 'MTK3A',
+    token_akses: 'PAN26',
     kkm: 75,
     status_aktif: true,
     acak_soal: false,
@@ -17,12 +17,102 @@ export const DEFAULT_MAPEL: MataPelajaran[] = [
     maks_pelanggaran: 3,
   },
   {
-    id_mapel: 'IPA-05',
-    nama_mapel: 'IPA - Ekosistem & Adaptasi Hewan',
-    kelas: '5 SD',
+    id_mapel: 'Bahasa Indonesia',
+    nama_mapel: 'Bahasa Indonesia',
+    kelas: 'Semua Kelas',
+    durasi_menit: 60,
+    token_akses: 'BIN26',
+    kkm: 75,
+    status_aktif: true,
+    acak_soal: false,
+    acak_opsi: false,
+    tampilkan_nilai: true,
+    tampilkan_pembahasan: true,
+    anti_curang: true,
+    maks_pelanggaran: 3,
+  },
+  {
+    id_mapel: 'Matematika',
+    nama_mapel: 'Matematika',
+    kelas: 'Semua Kelas',
+    durasi_menit: 60,
+    token_akses: 'MTK26',
+    kkm: 75,
+    status_aktif: true,
+    acak_soal: false,
+    acak_opsi: false,
+    tampilkan_nilai: true,
+    tampilkan_pembahasan: true,
+    anti_curang: true,
+    maks_pelanggaran: 3,
+  },
+  {
+    id_mapel: 'IPAS',
+    nama_mapel: 'IPAS',
+    kelas: 'Semua Kelas',
+    durasi_menit: 45,
+    token_akses: 'IPA26',
+    kkm: 75,
+    status_aktif: true,
+    acak_soal: false,
+    acak_opsi: false,
+    tampilkan_nilai: true,
+    tampilkan_pembahasan: true,
+    anti_curang: true,
+    maks_pelanggaran: 3,
+  },
+  {
+    id_mapel: 'Bahasa Jawa',
+    nama_mapel: 'Bahasa Jawa',
+    kelas: 'Semua Kelas',
+    durasi_menit: 45,
+    token_akses: 'JAW26',
+    kkm: 75,
+    status_aktif: true,
+    acak_soal: false,
+    acak_opsi: false,
+    tampilkan_nilai: true,
+    tampilkan_pembahasan: true,
+    anti_curang: true,
+    maks_pelanggaran: 3,
+  },
+  {
+    id_mapel: 'Bahasa Inggris',
+    nama_mapel: 'Bahasa Inggris',
+    kelas: 'Semua Kelas',
+    durasi_menit: 50,
+    token_akses: 'ENG26',
+    kkm: 75,
+    status_aktif: true,
+    acak_soal: false,
+    acak_opsi: false,
+    tampilkan_nilai: true,
+    tampilkan_pembahasan: true,
+    anti_curang: true,
+    maks_pelanggaran: 3,
+  },
+  {
+    id_mapel: 'Komputer dan Kecerdasan Artifisial',
+    nama_mapel: 'Komputer dan Kecerdasan Artifisial',
+    kelas: 'Semua Kelas',
+    durasi_menit: 45,
+    token_akses: 'KKA26',
+    kkm: 75,
+    status_aktif: true,
+    acak_soal: false,
+    acak_opsi: false,
+    tampilkan_nilai: true,
+    tampilkan_pembahasan: true,
+    anti_curang: true,
+    maks_pelanggaran: 3,
+  },
+  {
+    id_mapel: 'Kokurikuler',
+    nama_mapel: 'Kokurikuler',
+    kelas: 'Semua Kelas',
     durasi_menit: 40,
-    token_akses: 'IPA5B',
-    kkm: 70,
+    token_akses: 'KOK26',
+    kkm: 75,
     status_aktif: true,
     acak_soal: false,
     acak_opsi: false,
@@ -32,13 +122,13 @@ export const DEFAULT_MAPEL: MataPelajaran[] = [
     maks_pelanggaran: 3,
   },
   {
-    id_mapel: 'IND-04',
-    nama_mapel: 'Bahasa Indonesia - Membaca & Menulis',
-    kelas: '4 SD',
+    id_mapel: 'Seni Budaya',
+    nama_mapel: 'Seni Budaya',
+    kelas: 'Semua Kelas',
     durasi_menit: 45,
-    token_akses: 'BIN4C',
+    token_akses: 'SEN26',
     kkm: 75,
-    status_aktif: false,
+    status_aktif: true,
     acak_soal: false,
     acak_opsi: false,
     tampilkan_nilai: true,
@@ -48,11 +138,63 @@ export const DEFAULT_MAPEL: MataPelajaran[] = [
   }
 ];
 
+export const DEFAULT_KODE_SOAL_PAKET: KodeSoalPaket[] = [
+  {
+    id_kode: 'ASAS-MTK-01',
+    nama_kode: 'Asesmen Sumatif Matematika Bilangan & Pecahan',
+    id_mapel: 'Matematika',
+    nama_mapel: 'Matematika',
+    kelas: 'Kelas 4',
+    tipe_ujian: 'Asesmen Akhir Semester (ASAS)',
+    token_akses: 'MTK26',
+    durasi_menit: 60,
+    kkm: 75,
+    jumlah_soal: 5,
+    soal_ids: ['S01', 'S02', 'S03', 'S04', 'S05'],
+    status_aktif: true,
+    keterangan: 'Paket Asesmen Utama Semester Ganjil',
+    dibuat_pada: '2026-09-20 08:00',
+  },
+  {
+    id_kode: 'PH1-IPAS-01',
+    nama_kode: 'Penilaian Harian IPAS Ekosistem Lingkungan',
+    id_mapel: 'IPAS',
+    nama_mapel: 'IPAS',
+    kelas: 'Kelas 5',
+    tipe_ujian: 'Penilaian Harian (PH)',
+    token_akses: 'IPA26',
+    durasi_menit: 45,
+    kkm: 75,
+    jumlah_soal: 5,
+    soal_ids: ['IPA01', 'IPA02', 'IPA03', 'IPA04', 'IPA05'],
+    status_aktif: true,
+    keterangan: 'Penilaian Harian Bab Ekosistem & Rantai Makanan',
+    dibuat_pada: '2026-09-21 09:30',
+  },
+  {
+    id_kode: 'UH-PAN-01',
+    nama_kode: 'Ulangan Harian Pendidikan Pancasila & Norma',
+    id_mapel: 'Pendidikan Pancasila',
+    nama_mapel: 'Pendidikan Pancasila',
+    kelas: 'Kelas 4',
+    tipe_ujian: 'Penilaian Harian (PH)',
+    token_akses: 'PAN26',
+    durasi_menit: 45,
+    kkm: 75,
+    jumlah_soal: 2,
+    soal_ids: ['PAN01', 'PAN02'],
+    status_aktif: true,
+    keterangan: 'Nilai-Nilai Pancasila dan Gotong Royong',
+    dibuat_pada: '2026-09-22 07:15',
+  }
+];
+
 export const DEFAULT_QUESTIONS: Question[] = [
-  // MAT-03 Questions
+  // Matematika Questions
   {
     id_soal: 'S01',
-    id_mapel: 'MAT-03',
+    id_mapel: 'Matematika',
+    kode_soal: 'ASAS-MTK-01',
     jenis_soal: 'PG',
     pertanyaan: 'Berapakah hasil dari perkalian 15 × 4?',
     opsi_json: ['50', '60', '70', '80'],
@@ -62,7 +204,8 @@ export const DEFAULT_QUESTIONS: Question[] = [
   },
   {
     id_soal: 'S02',
-    id_mapel: 'MAT-03',
+    id_mapel: 'Matematika',
+    kode_soal: 'ASAS-MTK-01',
     jenis_soal: 'PGK',
     pertanyaan: 'Manakah dari bilangan-bilangan di bawah ini yang merupakan bilangan genap? (Pilih semua yang benar)',
     opsi_json: ['12', '15', '18', '21', '24'],
@@ -72,7 +215,8 @@ export const DEFAULT_QUESTIONS: Question[] = [
   },
   {
     id_soal: 'S03',
-    id_mapel: 'MAT-03',
+    id_mapel: 'Matematika',
+    kode_soal: 'ASAS-MTK-01',
     jenis_soal: 'MJ',
     pertanyaan: 'Jodohkan operasi pecahan berikut dengan nilai desimal atau bentuk sederhananya yang tepat!',
     opsi_json: {
@@ -89,7 +233,8 @@ export const DEFAULT_QUESTIONS: Question[] = [
   },
   {
     id_soal: 'S04',
-    id_mapel: 'MAT-03',
+    id_mapel: 'Matematika',
+    kode_soal: 'ASAS-MTK-01',
     jenis_soal: 'IS',
     pertanyaan: 'Sebuah persegi memiliki panjang sisi 8 cm. Berapakah keliling persegi tersebut dalam satuan cm? (Tulis hanya angka)',
     kunci_jawaban_json: ['32', '32 cm'],
@@ -98,7 +243,8 @@ export const DEFAULT_QUESTIONS: Question[] = [
   },
   {
     id_soal: 'S05',
-    id_mapel: 'MAT-03',
+    id_mapel: 'Matematika',
+    kode_soal: 'ASAS-MTK-01',
     jenis_soal: 'UR',
     pertanyaan: 'Ibu memiliki 3 keranjang buah. Setiap keranjang berisi 12 buah apel. Kemudian Ibu membagikan 16 buah apel kepada tetangga. Jelaskan langkah-langkah menghitung sisa apel yang dimiliki Ibu sekarang!',
     kunci_jawaban_json: 'Rubrik: 1. Menghitung total awal (3 x 12 = 36). 2. Mengurangi dengan yang dibagikan (36 - 16 = 20 apel).',
@@ -106,10 +252,11 @@ export const DEFAULT_QUESTIONS: Question[] = [
     pembahasan: 'Total apel = 3 keranjang × 12 = 36 buah. Sisa apel = 36 - 16 = 20 buah.',
   },
 
-  // IPA-05 Questions
+  // IPAS Questions
   {
     id_soal: 'IPA01',
-    id_mapel: 'IPA-05',
+    id_mapel: 'IPAS',
+    kode_soal: 'PH1-IPAS-01',
     jenis_soal: 'PG',
     pertanyaan: 'Hewan pemakan tumbuhan dalam suatu rantai makanan disebut sebagai...',
     url_gambar: 'https://images.unsplash.com/photo-1546182990-dffeafbe841d?w=600&auto=format&fit=crop&q=80',
@@ -120,7 +267,8 @@ export const DEFAULT_QUESTIONS: Question[] = [
   },
   {
     id_soal: 'IPA02',
-    id_mapel: 'IPA-05',
+    id_mapel: 'IPAS',
+    kode_soal: 'PH1-IPAS-01',
     jenis_soal: 'PGK',
     pertanyaan: 'Manakah bentuk adaptasi morfologi yang dimiliki oleh burung elang untuk menangkap mangsa? (Pilih 2 jawaban benar)',
     opsi_json: [
@@ -138,7 +286,8 @@ export const DEFAULT_QUESTIONS: Question[] = [
   },
   {
     id_soal: 'IPA03',
-    id_mapel: 'IPA-05',
+    id_mapel: 'IPAS',
+    kode_soal: 'PH1-IPAS-01',
     jenis_soal: 'MJ',
     pertanyaan: 'Jodohkan hewan berikut dengan jenis makanannya dalam ekosistem!',
     opsi_json: {
@@ -155,7 +304,8 @@ export const DEFAULT_QUESTIONS: Question[] = [
   },
   {
     id_soal: 'IPA04',
-    id_mapel: 'IPA-05',
+    id_mapel: 'IPAS',
+    kode_soal: 'PH1-IPAS-01',
     jenis_soal: 'IS',
     pertanyaan: 'Proses pembuatan makanan pada tumbuhan hijau dengan bantuan cahaya matahari dan klorofil disebut...',
     kunci_jawaban_json: ['fotosintesis', 'photosynthesis'],
@@ -164,12 +314,71 @@ export const DEFAULT_QUESTIONS: Question[] = [
   },
   {
     id_soal: 'IPA05',
-    id_mapel: 'IPA-05',
+    id_mapel: 'IPAS',
+    kode_soal: 'PH1-IPAS-01',
     jenis_soal: 'UR',
     pertanyaan: 'Jelaskan apa yang akan terjadi pada populasi ular dan tanaman padi jika seluruh populasi tikus di sawah punah!',
     kunci_jawaban_json: 'Rubrik: 1. Populasi ular akan menurun/kelaparan karena mangsanya hilang. 2. Produksi padi akan meningkat karena tidak dimakan tikus.',
     bobot: 3,
     pembahasan: 'Jika tikus punah: Tanaman padi akan berkembang subur dan panen meningkat, sedangkan populasi ular sawah akan berkurang drastis karena kekurangan sumber makanan.',
+  },
+
+  // Pendidikan Pancasila Questions
+  {
+    id_soal: 'PAN01',
+    id_mapel: 'Pendidikan Pancasila',
+    kode_soal: 'UH-PAN-01',
+    jenis_soal: 'PG',
+    pertanyaan: 'Sila dalam Pancasila yang dilambangkan dengan rantai emas adalah sila ke...',
+    opsi_json: ['Pertama', 'Kedua', 'Ketiga', 'Keempat'],
+    kunci_jawaban_json: 'B',
+    bobot: 1,
+    pembahasan: 'Sila ke-2 (Kemanusiaan yang Adil dan Beradab) dilambangkan oleh rantai emas segi empat dan lingkaran.',
+  },
+  {
+    id_soal: 'PAN02',
+    id_mapel: 'Pendidikan Pancasila',
+    kode_soal: 'UH-PAN-01',
+    jenis_soal: 'PGK',
+    pertanyaan: 'Berikut ini merupakan contoh penerapan nilai gotong royong dan persatuan di lingkungan sekolah: (Pilih 2 yang benar)',
+    opsi_json: [
+      'Melaksanakan piket kebersihan kelas bersama-sama',
+      'Membantu teman mengerjakan soal saat ujian berlangsung',
+      'Bekerja sama merapikan buku di perpustakaan sekolah',
+      'Memilih-milih teman bermain berdasarkan asal daerah'
+    ],
+    kunci_jawaban_json: [
+      'Melaksanakan piket kebersihan kelas bersama-sama',
+      'Bekerja sama merapikan buku di perpustakaan sekolah'
+    ],
+    bobot: 2,
+    pembahasan: 'Piket kelas bersama dan merapikan perpustakaan adalah wujud nyata gotong royong positif di sekolah.',
+  },
+
+  // Komputer dan Kecerdasan Artifisial Question
+  {
+    id_soal: 'KKA01',
+    id_mapel: 'Komputer dan Kecerdasan Artifisial',
+    kode_soal: 'KKA-LAT-01',
+    jenis_soal: 'PG',
+    pertanyaan: 'Perangkat keras komputer yang berfungsi sebagai "otak" pemrosesan seluruh instruksi dan perhitungan adalah...',
+    opsi_json: ['Monitor', 'CPU (Central Processing Unit)', 'Mouse', 'Printer'],
+    kunci_jawaban_json: 'B',
+    bobot: 1,
+    pembahasan: 'CPU (Processor) adalah unit pengolah pusat instruksi utama pada sistem komputer.',
+  },
+
+  // Bahasa Indonesia Question
+  {
+    id_soal: 'BIN01',
+    id_mapel: 'Bahasa Indonesia',
+    kode_soal: 'BIN-LAT-01',
+    jenis_soal: 'PG',
+    pertanyaan: 'Ide pokok atau gagasan utama dalam sebuah paragraf biasanya dapat ditemukan pada...',
+    opsi_json: ['Kalimat utama', 'Kalimat penjelas terakhir', 'Judul buku referensi', 'Tanda baca titik dua'],
+    kunci_jawaban_json: 'A',
+    bobot: 1,
+    pembahasan: 'Ide pokok paragraf tertuang pada kalimat utama, yang dapat terletak di awal (deduktif) atau di akhir (induktif).',
   }
 ];
 
@@ -191,8 +400,8 @@ export const DEFAULT_HASIL: HasilUjian[] = [
     nisn: '12345',
     nama_siswa: 'Ahmad Faiz Pratama',
     kelas: '3-A',
-    id_mapel: 'MAT-03',
-    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    id_mapel: 'Matematika',
+    nama_mapel: 'Matematika',
     jawaban_siswa: {
       S01: 'B',
       S02: ['12', '18', '24'],
@@ -214,8 +423,8 @@ export const DEFAULT_HASIL: HasilUjian[] = [
     nisn: '12346',
     nama_siswa: 'Budi Santoso',
     kelas: '3-A',
-    id_mapel: 'MAT-03',
-    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    id_mapel: 'Matematika',
+    nama_mapel: 'Matematika',
     jawaban_siswa: {
       S01: 'B',
       S02: ['12', '18'],
@@ -237,8 +446,8 @@ export const DEFAULT_HASIL: HasilUjian[] = [
     nisn: '12347',
     nama_siswa: 'Citra Dewi Lestari',
     kelas: '3-A',
-    id_mapel: 'MAT-03',
-    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    id_mapel: 'Matematika',
+    nama_mapel: 'Matematika',
     jawaban_siswa: {
       S01: 'A',
       S02: ['12', '15', '18'],
@@ -260,8 +469,8 @@ export const DEFAULT_HASIL: HasilUjian[] = [
     nisn: '12348',
     nama_siswa: 'Dimas Anggara',
     kelas: '3-A',
-    id_mapel: 'MAT-03',
-    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    id_mapel: 'Matematika',
+    nama_mapel: 'Matematika',
     jawaban_siswa: {
       S01: 'B',
       S02: ['12', '18', '24'],
@@ -283,8 +492,8 @@ export const DEFAULT_HASIL: HasilUjian[] = [
     nisn: '12349',
     nama_siswa: 'Eka Putri Rahayu',
     kelas: '3-A',
-    id_mapel: 'MAT-03',
-    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    id_mapel: 'Matematika',
+    nama_mapel: 'Matematika',
     jawaban_siswa: {
       S01: 'B',
       S02: ['12', '24'],
@@ -310,14 +519,14 @@ export const DEFAULT_RIWAYAT_PAKET: RiwayatPaketSoal[] = [
     prompt_tambahan: 'Fokus pada soal kontekstual kehidupan sehari-hari (belanja dan pembagian kue)',
     tingkat: 'SD / MI',
     kelas: 'Kelas 5',
-    id_mapel_target: 'MAT-03',
-    nama_mapel: 'Matematika - Operasi Hitung & Pecahan',
+    id_mapel_target: 'Matematika',
+    nama_mapel: 'Matematika',
     bentuk_soal: 'Campuran',
     jumlah_soal: 3,
     soal_list: [
       {
         id_soal: 'RP01',
-        id_mapel: 'MAT-03',
+        id_mapel: 'Matematika',
         jenis_soal: 'PG',
         pertanyaan: 'Ibu memiliki kue bolu dan memotongnya menjadi 8 bagian sama besar. Jika adik memakan 2 bagian dan kakak memakan 3 bagian, berapa bagian kue yang tersisa?',
         opsi_json: ['1/8 bagian', '2/8 bagian', '3/8 bagian', '5/8 bagian'],
@@ -327,7 +536,7 @@ export const DEFAULT_RIWAYAT_PAKET: RiwayatPaketSoal[] = [
       },
       {
         id_soal: 'RP02',
-        id_mapel: 'MAT-03',
+        id_mapel: 'Matematika',
         jenis_soal: 'PGK',
         pertanyaan: 'Manakah dari pecahan berikut yang memiliki nilai setara dengan 1/2? (Pilih semua jawaban yang benar)',
         opsi_json: ['2/4', '3/6', '4/8', '5/12'],
@@ -337,7 +546,7 @@ export const DEFAULT_RIWAYAT_PAKET: RiwayatPaketSoal[] = [
       },
       {
         id_soal: 'RP03',
-        id_mapel: 'MAT-03',
+        id_mapel: 'Matematika',
         jenis_soal: 'IS',
         pertanyaan: 'Bentuk desimal paling sederhana dari pecahan 3/4 adalah... (Tuliskan dengan koma atau titik)',
         kunci_jawaban_json: ['0.75', '0,75'],
@@ -353,14 +562,14 @@ export const DEFAULT_RIWAYAT_PAKET: RiwayatPaketSoal[] = [
     prompt_tambahan: 'Soal AKM Literasi Sains tentang paruh burung dan adaptasi gurun',
     tingkat: 'SD / MI',
     kelas: 'Kelas 5',
-    id_mapel_target: 'IPA-05',
-    nama_mapel: 'IPA - Ekosistem & Adaptasi Hewan',
+    id_mapel_target: 'IPAS',
+    nama_mapel: 'IPAS',
     bentuk_soal: 'Campuran',
     jumlah_soal: 2,
     soal_list: [
       {
         id_soal: 'RP04',
-        id_mapel: 'IPA-05',
+        id_mapel: 'IPAS',
         jenis_soal: 'PG',
         pertanyaan: 'Bentuk paruh burung kolibri yang panjang dan ramping berfungsi khusus untuk...',
         opsi_json: ['Merobek daging mangsa', 'Menghisap nektar di dasar bunga', 'Memecah biji-bijian keras', 'Menyaring lumpur di air'],
@@ -370,7 +579,7 @@ export const DEFAULT_RIWAYAT_PAKET: RiwayatPaketSoal[] = [
       },
       {
         id_soal: 'RP05',
-        id_mapel: 'IPA-05',
+        id_mapel: 'IPAS',
         jenis_soal: 'IS',
         pertanyaan: 'Unta menyimpan cadangan lemak sebagai sumber energi saat perjalanan jauh di bagian tubuh yang bernama...',
         kunci_jawaban_json: ['punuk', 'Punuk'],
@@ -380,3 +589,4 @@ export const DEFAULT_RIWAYAT_PAKET: RiwayatPaketSoal[] = [
     ]
   }
 ];
+

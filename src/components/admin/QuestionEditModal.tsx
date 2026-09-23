@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Question, QuestionType, MataPelajaran } from '../../types';
+import { Question, QuestionType, MataPelajaran, DAFTAR_MATA_PELAJARAN } from '../../types';
 import { 
   X, 
   Save, 
@@ -15,7 +15,8 @@ import {
   CheckCircle2, 
   Clipboard,
   Sparkles,
-  RotateCcw
+  RotateCcw,
+  FileKey
 } from 'lucide-react';
 import { compressImageFile, formatBytes } from '../../utils/imageUtils';
 
@@ -40,6 +41,7 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
 
   const [idSoal, setIdSoal] = useState<string>('');
   const [idMapel, setIdMapel] = useState<string>('');
+  const [kodeSoal, setKodeSoal] = useState<string>('');
   const [jenisSoal, setJenisSoal] = useState<QuestionType>('PG');
   const [pertanyaan, setPertanyaan] = useState<string>('');
   const [urlGambar, setUrlGambar] = useState<string>('');
@@ -84,6 +86,7 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
     if (question) {
       setIdSoal(question.id_soal);
       setIdMapel(question.id_mapel);
+      setKodeSoal(question.kode_soal || '');
       setJenisSoal(question.jenis_soal);
       setPertanyaan(question.pertanyaan);
       setUrlGambar(question.url_gambar || '');
@@ -131,7 +134,8 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
       // New question initial defaults
       const autoId = 'S' + Date.now().toString().slice(-4);
       setIdSoal(autoId);
-      setIdMapel(defaultMapelId || mapelList[0]?.id_mapel || 'MAT-03');
+      setIdMapel(defaultMapelId || mapelList[0]?.id_mapel || 'Matematika');
+      setKodeSoal('');
       setJenisSoal('PG');
       setPertanyaan('');
       setUrlGambar('');
@@ -313,6 +317,7 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
     const payload: Question = {
       id_soal: idSoal.trim(),
       id_mapel: idMapel.trim(),
+      kode_soal: kodeSoal.trim().toUpperCase() || undefined,
       jenis_soal: jenisSoal,
       pertanyaan: pertanyaan.trim(),
       url_gambar: urlGambar.trim() || undefined,
@@ -356,8 +361,8 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
             </div>
           )}
 
-          {/* Row 1: ID Soal, Mapel, Jenis */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Row 1: ID Soal, Mapel, Kode Soal, Bentuk Soal */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">ID Soal *</label>
               <input
@@ -370,20 +375,33 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
                 placeholder="cth: S01"
               />
             </div>
+
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Target Mapel *</label>
+              <label className="block text-xs font-medium text-slate-300 mb-1">Mata Pelajaran *</label>
               <select
                 value={idMapel}
                 onChange={(e) => setIdMapel(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-emerald-500 outline-none"
               >
-                {mapelList.map((m) => (
-                  <option key={m.id_mapel} value={m.id_mapel}>
-                    {m.id_mapel} - {m.nama_mapel}
+                {DAFTAR_MATA_PELAJARAN.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
                   </option>
                 ))}
               </select>
             </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1">Kode Soal / Paket</label>
+              <input
+                type="text"
+                value={kodeSoal}
+                onChange={(e) => setKodeSoal(e.target.value.toUpperCase())}
+                placeholder="cth: ASAS-MTK-01"
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono uppercase focus:ring-2 focus:ring-emerald-500 outline-none placeholder:normal-case"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">Bentuk Soal *</label>
               <select

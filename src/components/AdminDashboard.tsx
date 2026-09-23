@@ -7,7 +7,9 @@ import {
   AdminTab,
   AnalisisItem,
   QuestionType,
-  RiwayatPaketSoal
+  RiwayatPaketSoal,
+  KodeSoalPaket,
+  DAFTAR_MATA_PELAJARAN
 } from '../types';
 import { 
   hitungAnalisisButirSoal, 
@@ -17,8 +19,14 @@ import {
   getRiwayatPaketSoal,
   saveRiwayatPaketSoal,
   tambahRiwayatPaketSoal,
-  hapusRiwayatPaketSoal
+  hapusRiwayatPaketSoal,
+  getKodeSoalList,
+  tambahKodeSoal,
+  updateKodeSoal,
+  hapusKodeSoal,
+  kirimHasilKeGoogleSheets
 } from '../services/gasService';
+import { KodeSoalTab } from './admin/KodeSoalTab';
 import { 
   Table, 
   BarChart3, 
@@ -28,6 +36,8 @@ import {
   Plus, 
   Trash2, 
   Check, 
+  FileKey,
+  Send,
   Copy, 
   ExternalLink, 
   Download, 
@@ -88,6 +98,83 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Riwayat Paket Soal State
   const [historyList, setHistoryList] = useState<RiwayatPaketSoal[]>(() => getRiwayatPaketSoal());
+
+  // Kode Soal State
+  const [kodeList, setKodeList] = useState<KodeSoalPaket[]>(() => getKodeSoalList());
+
+  // Test Kirim Hasil Ujian State (Troubleshooting Google Sheets)
+  const [testSendLoading, setTestSendLoading] = useState<boolean>(false);
+  const [testSendResult, setTestSendResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Kode Soal Handlers
+  const handleSaveKode = (item: KodeSoalPaket) => {
+    tambahKodeSoal(item);
+    setKodeList(getKodeSoalList());
+  };
+
+  const handleUpdateKode = (item: KodeSoalPaket) => {
+    updateKodeSoal(item);
+    setKodeList(getKodeSoalList());
+  };
+
+  const handleDeleteKode = (id_kode: string) => {
+    hapusKodeSoal(id_kode);
+    setKodeList(getKodeSoalList());
+  };
+
+  const handleSyncKodeToMapel = (item: KodeSoalPaket) => {
+    const updated = mapelList.map(m => {
+      if (m.id_mapel === item.id_mapel) {
+        return {
+          ...m,
+          token_akses: item.token_akses,
+          durasi_menit: item.durasi_menit,
+          status_aktif: item.status_aktif,
+          kkm: item.kkm,
+        };
+      }
+      return m;
+    });
+    onUpdateMapel(updated);
+    alert(`Berhasil sinkronkan Kode Soal ${item.id_kode} ke Mapel ${item.id_mapel}! Token: ${item.token_akses}, Durasi: ${item.durasi_menit} menit.`);
+  };
+
+  // Handler for live testing writing to tab HasilUjian
+  const handleTestSendHasilUjian = async () => {
+    const url = gasUrlInput.trim();
+    if (!url) {
+      setTestSendResult({
+        success: false,
+        message: 'Harap masukkan URL Web App Google Apps Script Anda terlebih dahulu.'
+      });
+      return;
+    }
+
+    setTestSendLoading(true);
+    setTestSendResult(null);
+
+    const sampleHasil: HasilUjian = {
+      id_hasil: 'TEST-' + Date.now().toString().slice(-4),
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      nisn: '1234567890',
+      nama_siswa: 'Peserta Uji Coba CBT',
+      kelas: '5',
+      id_mapel: 'Matematika',
+      nama_mapel: 'Matematika',
+      jawaban_siswa: { S01: 'B', S02: ['12', '18', '24'] },
+      skor_per_soal: { S01: 1, S02: 2 },
+      skor_total: 3,
+      total_bobot: 3,
+      nilai_akhir: 100,
+      status_koreksi: 'SELESAI',
+      pelanggaran_curang: 0,
+      durasi_menit: 20
+    };
+
+    const res = await kirimHasilKeGoogleSheets(sampleHasil, url);
+    setTestSendLoading(false);
+    setTestSendResult(res);
+  };
 
   // Question CRUD Modal State
   const [isQuestionModalOpen, setIsQuestionModalOpen] = useState<boolean>(false);
@@ -377,6 +464,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               <Table className="w-3.5 h-3.5" />
               <span>Database Sheets</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('kode-soal')}
+              className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
+                activeTab === 'kode-soal'
+                  ? 'bg-violet-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <FileKey className="w-3.5 h-3.5 text-violet-300" />
+              <span>Kode Soal</span>
             </button>
 
             <button
@@ -823,6 +922,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {/* ============================================================ */}
+        {/* TAB 1.5: MANAJEMEN KODE SOAL & PAKET UJIAN                   */}
+        {/* ============================================================ */}
+        {activeTab === 'kode-soal' && (
+          <KodeSoalTab
+            kodeList={kodeList}
+            mapelList={mapelList}
+            soalList={soalList}
+            onSaveKode={handleSaveKode}
+            onUpdateKode={handleUpdateKode}
+            onDeleteKode={handleDeleteKode}
+            onSyncToMapel={handleSyncKodeToMapel}
+          />
+        )}
+
+        {/* ============================================================ */}
         {/* TAB 2: ANALISIS BUTIR SOAL & DISTRAKTOR (P & D)              */}
         {/* ============================================================ */}
         {activeTab === 'analisis' && (
@@ -921,32 +1035,108 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
             </div>
 
+            {/* TROUBLESHOOTING BOX: HASIL UJIAN TIDAK TERSIMPAN */}
+            <div className="bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 border border-amber-500/40 rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold text-white">
+                      Solusi & Diagnostik: Data Hasil Ujian Belum Masuk ke Google Sheets
+                    </h3>
+                    <p className="text-xs text-slate-300">
+                      Jika hasil ujian siswa belum muncul di Google Drive Spreadsheet, periksa 4 checklist berikut:
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleTestSendHasilUjian}
+                  disabled={testSendLoading}
+                  className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center justify-center space-x-2 shrink-0 shadow-lg shadow-amber-950/40"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{testSendLoading ? 'Mengirim Baris Uji...' : 'Kirim Baris Uji Coba ke Tab HasilUjian'}</span>
+                </button>
+              </div>
+
+              {testSendResult && (
+                <div className={`p-3.5 rounded-xl text-xs flex items-center space-x-2.5 ${
+                  testSendResult.success 
+                    ? 'bg-emerald-950/80 border border-emerald-600/50 text-emerald-200' 
+                    : 'bg-rose-950/80 border border-rose-600/50 text-rose-200'
+                }`}>
+                  {testSendResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" /> : <XCircle className="w-4 h-4 shrink-0 text-rose-400" />}
+                  <span>{testSendResult.message}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 space-y-2">
+                  <span className="text-amber-400 font-bold text-xs flex items-center space-x-1.5">
+                    <span>1. Nama Tab Spreadsheet</span>
+                  </span>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Pastikan nama tab ke-4 ditulis persis <code className="text-amber-300 bg-slate-900 px-1 py-0.5 rounded">HasilUjian</code> (tanpa spasi di awal/akhir). Kode script terbaru kami juga telah dilengkapi fitur <em>auto-create</em> yang otomatis membuat tab ini jika belum ada.
+                  </p>
+                </div>
+
+                <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 space-y-2">
+                  <span className="text-amber-400 font-bold text-xs flex items-center space-x-1.5">
+                    <span>2. Izin Akses Web App (Anyone)</span>
+                  </span>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Di jendela Deploy Apps Script, pastikan <strong>Execute as: Me</strong> dan <strong>Who has access: Anyone</strong> (Siapa saja, bahkan anonim). Jika disetel "Only myself", kiriman submit siswa akan diblokir Google.
+                  </p>
+                </div>
+
+                <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 space-y-2">
+                  <span className="text-amber-400 font-bold text-xs flex items-center space-x-1.5">
+                    <span>3. Wajib Buat "New Deployment"</span>
+                  </span>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Setiap kali Anda menempelkan kode baru ke <code className="text-slate-300 bg-slate-900 px-1 py-0.5 rounded">Code.gs</code>, Anda <strong>wajib</strong> klik <code>Deploy &gt; New deployment</code>. Mengubah kode tanpa membuat versi deployment baru tidak akan menerapkan perubahan pada URL yang lama.
+                  </p>
+                </div>
+
+                <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 space-y-2">
+                  <span className="text-amber-400 font-bold text-xs flex items-center space-x-1.5">
+                    <span>4. Penanganan Anti-CORS</span>
+                  </span>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Aplikasi CBT ini telah disempurnakan mengirimkan data dengan header <code className="text-amber-300 bg-slate-900 px-1 py-0.5 rounded">text/plain;charset=utf-8</code> dan mode <code className="text-amber-300 bg-slate-900 px-1 py-0.5 rounded">no-cors</code> untuk menghindari blokir request OPTIONS preflight dari browser.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Step-by-Step Installation Tutorial */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
-              <h3 className="text-lg font-bold text-white">Panduan Langkah Instalasi (5 Menit)</h3>
+              <h3 className="text-lg font-bold text-white">Panduan Langkah Instalasi & Perbaikan (5 Menit)</h3>
               
               <ol className="space-y-4 text-xs sm:text-sm text-slate-300 list-decimal list-inside">
                 <li className="leading-relaxed">
-                  <strong>Buat Google Spreadsheet Baru:</strong> Beri nama misalnya <em>"Database CBT Sekolah"</em>.
-                </li>
-                <li className="leading-relaxed">
-                  <strong>Buat 4 Tab/Sheet:</strong> Pastikan nama tab persis: <code>MataPelajaran</code>, <code>BankSoal</code>, <code>DataSiswa</code>, dan <code>HasilUjian</code>.
+                  <strong>Buka Google Spreadsheet CBT Anda:</strong> Pastikan terdapat 4 nama tab: <code>MataPelajaran</code>, <code>BankSoal</code>, <code>DataSiswa</code>, dan <code>HasilUjian</code>.
                 </li>
                 <li className="leading-relaxed">
                   <strong>Buka Apps Script:</strong> Di Google Sheets, klik menu <code>Extensions</code> &gt; <code>Apps Script</code>.
                 </li>
                 <li className="leading-relaxed">
-                  <strong>Salin Script:</strong> Hapus kode bawaan di <code>Code.gs</code> lalu klik tombol <em>"Salin Seluruh Kode Script (Code.gs)"</em> di bawah ini.
+                  <strong>Perbarui Kode Script:</strong> Hapus seluruh kode lama di <code>Code.gs</code>, lalu klik tombol <em>"Salin Seluruh Kode Script (Code.gs)"</em> di bawah ini dan tempelkan (Paste).
                 </li>
                 <li className="leading-relaxed">
-                  <strong>Deploy sebagai Web App:</strong> Klik tombol <code>Deploy</code> &gt; <code>New deployment</code> &gt; Pilih icon roda gigi type <code>Web app</code>. Atur:
+                  <strong>Deploy Ulang (Penting!):</strong> Klik tombol biru <code>Deploy</code> &gt; <code>New deployment</code> &gt; Klik icon roda gigi type <code>Web app</code>:
                   <ul className="list-disc list-inside ml-6 mt-1 text-slate-400 space-y-0.5">
+                    <li>Description: <strong>CBT Update HasilUjian Fix</strong></li>
                     <li>Execute as: <strong>Me (email Anda)</strong></li>
-                    <li>Who has access: <strong>Anyone (Siapa saja, bahkan tanpa akun Google)</strong></li>
+                    <li>Who has access: <strong>Anyone (Siapa saja)</strong></li>
                   </ul>
                 </li>
                 <li className="leading-relaxed">
-                  <strong>Selesai:</strong> Salin URL Web App yang muncul, lalu tempelkan pada kolom di atas!
+                  <strong>Salin URL Baru:</strong> Salin URL Web App yang berakhiran <code>/exec</code>, tempelkan ke kolom URL di atas, dan klik <em>"Simpan & Test Ping"</em>.
                 </li>
               </ol>
 

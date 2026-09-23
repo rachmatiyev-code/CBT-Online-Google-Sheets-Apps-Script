@@ -1,5 +1,5 @@
-import { MataPelajaran, Question, Siswa, HasilUjian, AnalisisItem, RiwayatPaketSoal, DistraktorInfo } from '../types';
-import { DEFAULT_MAPEL, DEFAULT_QUESTIONS, DEFAULT_SISWA, DEFAULT_HASIL, DEFAULT_RIWAYAT_PAKET } from '../data/defaultData';
+import { MataPelajaran, Question, Siswa, HasilUjian, AnalisisItem, RiwayatPaketSoal, DistraktorInfo, KodeSoalPaket, DAFTAR_MATA_PELAJARAN } from '../types';
+import { DEFAULT_MAPEL, DEFAULT_QUESTIONS, DEFAULT_SISWA, DEFAULT_HASIL, DEFAULT_RIWAYAT_PAKET, DEFAULT_KODE_SOAL_PAKET } from '../data/defaultData';
 
 const STORAGE_KEYS = {
   MAPEL: 'cbt_sheets_mapel',
@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   HASIL: 'cbt_sheets_hasil',
   GAS_URL: 'cbt_gas_webapp_url',
   RIWAYAT: 'cbt_sheets_riwayat_paket',
+  KODE_SOAL: 'cbt_sheets_kode_soal_paket',
 };
 
 // ============================================================
@@ -131,52 +132,107 @@ function doGet(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+function getOrCreateSheet(ss, targetName, defaultHeaders) {
+  var sheets = ss.getSheets();
+  var normalizedTarget = targetName.toLowerCase().replace(/[\s_-]/g, '');
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].getName().toLowerCase().replace(/[\s_-]/g, '') === normalizedTarget) {
+      return sheets[i];
+    }
+  }
+  // Auto create sheet if missing
+  var newSheet = ss.insertSheet(targetName);
+  if (defaultHeaders && defaultHeaders.length > 0) {
+    newSheet.appendRow(defaultHeaders);
+  }
+  return newSheet;
+}
+
 function doPost(e) {
   var response = {};
 
   try {
-    var payload = JSON.parse(e.postData.contents);
+    var payload = {};
+    if (e && e.postData && e.postData.contents) {
+      try {
+        payload = JSON.parse(e.postData.contents);
+      } catch (errJson) {
+        payload = e.parameter || {};
+      }
+    } else if (e && e.parameter) {
+      payload = e.parameter;
+    }
+
     var action = payload.action || 'submitJawaban';
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    if (action === 'submitJawaban') {
-      var idMapel = payload.id_mapel;
-      var nisn = payload.nisn;
+    if (action === 'submitJawaban' || action === 'simpanHasil') {
+      var idMapel = payload.id_mapel || payload.nama_mapel || 'Ujian';
+      var nisn = String(payload.nisn || '');
       var namaSiswa = payload.nama_siswa || '';
       var kelas = payload.kelas || '';
-      var jawabanSiswa = payload.jawaban || {};
-      var durasiMenit = payload.durasi_menit || 0;
-      var pelanggaran = payload.pelanggaran_curang || 0;
+      var jawabanSiswa = payload.jawaban || payload.jawaban_siswa || {};
+      var durasiMenit = Number(payload.durasi_menit) || 0;
+      var pelanggaran = Number(payload.pelanggaran_curang) || 0;
 
-      // 1. Ambil Bank Soal dari Spreadsheet untuk penilaian di server
-      var sheetSoal = ss.getSheetByName('BankSoal');
-      var soalData = sheetSoal.getDataRange().getValues();
+      // 1. Dapatkan atau buat otomatis Tab HasilUjian jika belum ada / salah penamaan
+      var sheetHasil = getOrCreateSheet(ss, 'HasilUjian', [
+        'id_hasil',
+        'timestamp',
+        'nisn',
+        'nama_siswa',
+        'kelas',
+        'id_mapel',
+        'jawaban_siswa',
+        'skor_per_soal',
+        'skor_total',
+        'total_bobot',
+        'nilai_akhir',
+        'status_koreksi',
+        'pelanggaran_curang',
+        'durasi_menit'
+      ]);
+
+      // 2. Ambil Bank Soal dari Spreadsheet jika ada
+      var sheetSoal = getOrCreateSheet(ss, 'BankSoal', []);
       var bankSoal = [];
-
-      for (var s = 1; s < soalData.length; s++) {
-        var r = soalData[s];
-        if (r[1] === idMapel) {
-          bankSoal.push({
-            id_soal: r[0],
-            id_mapel: r[1],
-            jenis_soal: r[2],
-            pertanyaan: r[3],
-            url_gambar: r[4],
-            opsi_json: r[5],
-            kunci_jawaban_json: r[6],
-            bobot: Number(r[7]) || 1
-          });
+      if (sheetSoal.getLastRow() > 1) {
+        var soalData = sheetSoal.getDataRange().getValues();
+        for (var s = 1; s < soalData.length; s++) {
+          var r = soalData[s];
+          if (r[1] === idMapel || String(r[1]).toLowerCase() === String(idMapel).toLowerCase()) {
+            bankSoal.push({
+              id_soal: r[0],
+              id_mapel: r[1],
+              jenis_soal: r[2],
+              pertanyaan: r[3],
+              url_gambar: r[4],
+              opsi_json: r[5],
+              kunci_jawaban_json: r[6],
+              bobot: Number(r[7]) || 1
+            });
+          }
         }
       }
 
-      // 2. Hitung Nilai Otomatis sesuai rumus CBT
-      var hasil = hitungSkorOtomatis(bankSoal, jawabanSiswa);
+      // 3. Hitung Skor (atau gunakan skor yang sudah dihitung frontend jika bank soal di sheet belum disinkron)
+      var hasil;
+      if (bankSoal.length > 0) {
+        hasil = hitungSkorOtomatis(bankSoal, jawabanSiswa);
+      } else {
+        hasil = {
+          totalSkor: Number(payload.skor_total) || 0,
+          totalBobot: Number(payload.total_bobot) || 100,
+          nilaiAkhir: Number(payload.nilai_akhir) !== undefined ? Number(payload.nilai_akhir) : Number(payload.skor_total) || 0,
+          skorPerSoal: payload.skor_per_soal || {},
+          statusKoreksi: payload.status_koreksi || 'SELESAI'
+        };
+      }
 
-      // 3. Simpan Rekap ke Tab HasilUjian
-      var sheetHasil = ss.getSheetByName('HasilUjian');
-      var idHasil = 'H-' + new Date().getTime();
-      var timestamp = Utilities.formatDate(new Date(), 'GMT+7', 'yyyy-MM-dd HH:mm:ss');
+      var idHasil = payload.id_hasil || ('H-' + new Date().getTime());
+      var timestamp = payload.timestamp || Utilities.formatDate(new Date(), 'GMT+7', 'yyyy-MM-dd HH:mm:ss');
 
+      // 4. Tulis baris baru ke Tab HasilUjian
       sheetHasil.appendRow([
         idHasil,
         timestamp,
@@ -184,8 +240,8 @@ function doPost(e) {
         namaSiswa,
         kelas,
         idMapel,
-        JSON.stringify(jawabanSiswa),
-        JSON.stringify(hasil.skorPerSoal),
+        typeof jawabanSiswa === 'string' ? jawabanSiswa : JSON.stringify(jawabanSiswa),
+        typeof hasil.skorPerSoal === 'string' ? hasil.skorPerSoal : JSON.stringify(hasil.skorPerSoal),
         hasil.totalSkor,
         hasil.totalBobot,
         hasil.nilaiAkhir,
@@ -196,6 +252,7 @@ function doPost(e) {
 
       response = {
         status: 'success',
+        message: 'Hasil ujian berhasil disimpan ke tab HasilUjian Google Sheets!',
         id_hasil: idHasil,
         skor_total: hasil.totalSkor,
         total_bobot: hasil.totalBobot,
@@ -203,6 +260,8 @@ function doPost(e) {
         skorPerSoal: hasil.skorPerSoal,
         statusKoreksi: hasil.statusKoreksi
       };
+    } else {
+      response = { status: 'error', message: 'Aksi POST tidak dikenal.' };
     }
   } catch (err) {
     response = { status: 'error', message: err.toString() };
@@ -318,15 +377,48 @@ export function setGasWebappUrl(url: string): void {
 
 export function getMataPelajaran(): MataPelajaran[] {
   const data = localStorage.getItem(STORAGE_KEYS.MAPEL);
+  let list: MataPelajaran[] = [];
   if (!data) {
+    list = DEFAULT_MAPEL;
     localStorage.setItem(STORAGE_KEYS.MAPEL, JSON.stringify(DEFAULT_MAPEL));
-    return DEFAULT_MAPEL;
+    return list;
   }
   try {
-    return JSON.parse(data);
+    list = JSON.parse(data);
   } catch {
-    return DEFAULT_MAPEL;
+    list = DEFAULT_MAPEL;
   }
+
+  // Backward compatibility: map old IDs
+  let modified = false;
+  list = list.map(m => {
+    if (m.id_mapel === 'MAT-03') {
+      modified = true;
+      return { ...m, id_mapel: 'Matematika', nama_mapel: 'Matematika' };
+    }
+    if (m.id_mapel === 'IPA-05') {
+      modified = true;
+      return { ...m, id_mapel: 'IPAS', nama_mapel: 'IPAS' };
+    }
+    if (m.id_mapel === 'IND-04') {
+      modified = true;
+      return { ...m, id_mapel: 'Bahasa Indonesia', nama_mapel: 'Bahasa Indonesia' };
+    }
+    return m;
+  });
+
+  // Ensure all 9 subjects exist in the list
+  DEFAULT_MAPEL.forEach(defM => {
+    if (!list.some(item => item.id_mapel === defM.id_mapel)) {
+      list.push(defM);
+      modified = true;
+    }
+  });
+
+  if (modified) {
+    localStorage.setItem(STORAGE_KEYS.MAPEL, JSON.stringify(list));
+  }
+  return list;
 }
 
 export function saveMataPelajaran(mapelList: MataPelajaran[]): void {
@@ -335,19 +427,66 @@ export function saveMataPelajaran(mapelList: MataPelajaran[]): void {
 
 export function getBankSoal(): Question[] {
   const data = localStorage.getItem(STORAGE_KEYS.SOAL);
+  let list: Question[] = [];
   if (!data) {
+    list = DEFAULT_QUESTIONS;
     localStorage.setItem(STORAGE_KEYS.SOAL, JSON.stringify(DEFAULT_QUESTIONS));
-    return DEFAULT_QUESTIONS;
+    return list;
   }
   try {
-    return JSON.parse(data);
+    list = JSON.parse(data);
   } catch {
-    return DEFAULT_QUESTIONS;
+    list = DEFAULT_QUESTIONS;
   }
+
+  let modified = false;
+  list = list.map(s => {
+    let newMapel = s.id_mapel;
+    if (s.id_mapel === 'MAT-03') {
+      newMapel = 'Matematika';
+      modified = true;
+    } else if (s.id_mapel === 'IPA-05') {
+      newMapel = 'IPAS';
+      modified = true;
+    } else if (s.id_mapel === 'IND-04') {
+      newMapel = 'Bahasa Indonesia';
+      modified = true;
+    }
+    if (!s.kode_soal) {
+      modified = true;
+      return { ...s, id_mapel: newMapel, kode_soal: `KODE-${newMapel.substring(0, 3).toUpperCase()}-01` };
+    }
+    if (newMapel !== s.id_mapel) {
+      return { ...s, id_mapel: newMapel };
+    }
+    return s;
+  });
+
+  if (modified) {
+    localStorage.setItem(STORAGE_KEYS.SOAL, JSON.stringify(list));
+  }
+  return list;
 }
 
 export function saveBankSoal(soalList: Question[]): void {
   localStorage.setItem(STORAGE_KEYS.SOAL, JSON.stringify(soalList));
+}
+
+export function getKodeSoalPaket(): KodeSoalPaket[] {
+  const data = localStorage.getItem(STORAGE_KEYS.KODE_SOAL);
+  if (!data) {
+    localStorage.setItem(STORAGE_KEYS.KODE_SOAL, JSON.stringify(DEFAULT_KODE_SOAL_PAKET));
+    return DEFAULT_KODE_SOAL_PAKET;
+  }
+  try {
+    return JSON.parse(data);
+  } catch {
+    return DEFAULT_KODE_SOAL_PAKET;
+  }
+}
+
+export function saveKodeSoalPaket(list: KodeSoalPaket[]): void {
+  localStorage.setItem(STORAGE_KEYS.KODE_SOAL, JSON.stringify(list));
 }
 
 export function getDataSiswa(): Siswa[] {
@@ -382,6 +521,99 @@ export function getHasilUjian(): HasilUjian[] {
 
 export function saveHasilUjian(hasilList: HasilUjian[]): void {
   localStorage.setItem(STORAGE_KEYS.HASIL, JSON.stringify(hasilList));
+}
+
+// ============================================================
+// KODE SOAL MANAGEMENT FUNCTIONS
+// ============================================================
+export function getKodeSoalList(): KodeSoalPaket[] {
+  const data = localStorage.getItem(STORAGE_KEYS.KODE_SOAL);
+  if (!data) {
+    localStorage.setItem(STORAGE_KEYS.KODE_SOAL, JSON.stringify(DEFAULT_KODE_SOAL_PAKET));
+    return DEFAULT_KODE_SOAL_PAKET;
+  }
+  try {
+    return JSON.parse(data);
+  } catch {
+    return DEFAULT_KODE_SOAL_PAKET;
+  }
+}
+
+export function saveKodeSoalList(list: KodeSoalPaket[]): void {
+  localStorage.setItem(STORAGE_KEYS.KODE_SOAL, JSON.stringify(list));
+}
+
+export function tambahKodeSoal(item: KodeSoalPaket): void {
+  const current = getKodeSoalList();
+  const updated = [item, ...current.filter(k => k.id_kode !== item.id_kode)];
+  saveKodeSoalList(updated);
+}
+
+export function updateKodeSoal(item: KodeSoalPaket): void {
+  const current = getKodeSoalList();
+  const updated = current.map(k => k.id_kode === item.id_kode ? item : k);
+  saveKodeSoalList(updated);
+}
+
+export function hapusKodeSoal(id_kode: string): void {
+  const current = getKodeSoalList();
+  const updated = current.filter(k => k.id_kode !== id_kode);
+  saveKodeSoalList(updated);
+}
+
+// ============================================================
+// KIRIM HASIL KE GOOGLE APPS SCRIPT (CORS & Tab HasilUjian Safe)
+// ============================================================
+export async function kirimHasilKeGoogleSheets(
+  hasil: HasilUjian, 
+  targetUrl?: string
+): Promise<{ success: boolean; message: string }> {
+  const url = (targetUrl || getGasWebappUrl()).trim();
+  if (!url) {
+    return { success: false, message: 'URL Google Apps Script Web App belum diatur.' };
+  }
+
+  const payload = {
+    action: 'submitJawaban',
+    id_hasil: hasil.id_hasil,
+    timestamp: hasil.timestamp,
+    nisn: hasil.nisn,
+    nama_siswa: hasil.nama_siswa,
+    kelas: hasil.kelas,
+    id_mapel: hasil.id_mapel,
+    nama_mapel: hasil.nama_mapel,
+    jawaban_siswa: hasil.jawaban_siswa,
+    skor_per_soal: hasil.skor_per_soal,
+    skor_total: hasil.skor_total,
+    total_bobot: hasil.total_bobot,
+    nilai_akhir: hasil.nilai_akhir,
+    status_koreksi: hasil.status_koreksi,
+    pelanggaran_curang: hasil.pelanggaran_curang,
+    durasi_menit: hasil.durasi_menit,
+  };
+
+  try {
+    // Sesuai panduan: Gunakan text/plain;charset=utf-8 agar browser TIDAK mengirimkan OPTIONS preflight yang ditolak GAS
+    await fetch(url, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    return {
+      success: true,
+      message: 'Data hasil ujian berhasil dikirimkan ke Google Sheets (Tab HasilUjian) via Google Apps Script.'
+    };
+  } catch (err: any) {
+    console.error('Error kirim hasil ke GAS:', err);
+    return {
+      success: false,
+      message: err.message || 'Gagal mengirimkan data ke Google Sheets. Pastikan deployment disetel ke Anyone.'
+    };
+  }
 }
 
 export function getRiwayatPaketSoal(): RiwayatPaketSoal[] {
@@ -420,6 +652,7 @@ export function resetDatabaseToDefault(): void {
   localStorage.setItem(STORAGE_KEYS.SISWA, JSON.stringify(DEFAULT_SISWA));
   localStorage.setItem(STORAGE_KEYS.HASIL, JSON.stringify(DEFAULT_HASIL));
   localStorage.setItem(STORAGE_KEYS.RIWAYAT, JSON.stringify(DEFAULT_RIWAYAT_PAKET));
+  localStorage.setItem(STORAGE_KEYS.KODE_SOAL, JSON.stringify(DEFAULT_KODE_SOAL_PAKET));
 }
 
 // ============================================================

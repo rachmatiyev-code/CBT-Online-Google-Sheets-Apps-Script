@@ -1,8 +1,23 @@
 export type QuestionType = 'PG' | 'PGK' | 'MJ' | 'IS' | 'UR';
 
+export const DAFTAR_MATA_PELAJARAN = [
+  'Pendidikan Pancasila',
+  'Bahasa Indonesia',
+  'Matematika',
+  'IPAS',
+  'Bahasa Jawa',
+  'Bahasa Inggris',
+  'Komputer dan Kecerdasan Artifisial',
+  'Kokurikuler',
+  'Seni Budaya',
+] as const;
+
+export type NamaMataPelajaran = (typeof DAFTAR_MATA_PELAJARAN)[number];
+
 export interface Question {
   id_soal: string;
   id_mapel: string;
+  kode_soal?: string;
   jenis_soal: QuestionType;
   pertanyaan: string;
   url_gambar?: string;
@@ -92,5 +107,22 @@ export interface RiwayatPaketSoal {
   soal_list: Question[];
 }
 
+export interface KodeSoalPaket {
+  id_kode: string; // e.g. "KODE-MTK-01"
+  nama_kode: string; // e.g. "Asesmen Sumatif Akhir Semester (ASAS)"
+  id_mapel: string; // Nama Mata Pelajaran
+  nama_mapel: string;
+  kelas: string;
+  tipe_ujian: string;
+  token_akses: string;
+  durasi_menit: number;
+  kkm: number;
+  jumlah_soal: number;
+  soal_ids: string[];
+  status_aktif: boolean;
+  keterangan?: string;
+  dibuat_pada: string;
+}
+
 export type ViewMode = 'login' | 'ujian' | 'hasil' | 'admin';
-export type AdminTab = 'sheets' | 'analisis' | 'ai-generator' | 'riwayat-soal' | 'share-link' | 'gas-setup' | 'hasil-rekap' | 'api-key';
+export type AdminTab = 'sheets' | 'kode-soal' | 'analisis' | 'ai-generator' | 'riwayat-soal' | 'share-link' | 'gas-setup' | 'hasil-rekap' | 'api-key';
