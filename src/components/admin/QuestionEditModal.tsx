@@ -16,7 +16,8 @@ import {
   Clipboard,
   Sparkles,
   RotateCcw,
-  FileKey
+  FileKey,
+  FileText
 } from 'lucide-react';
 import { compressImageFile, formatBytes } from '../../utils/imageUtils';
 
@@ -80,6 +81,9 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
   // Uraian keywords
   const [kunciUraian, setKunciUraian] = useState<string>('');
 
+  // Draft state
+  const [isDraft, setIsDraft] = useState<boolean>(false);
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -92,6 +96,7 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
       setUrlGambar(question.url_gambar || '');
       setBobot(question.bobot || 1);
       setPembahasan(question.pembahasan || '');
+      setIsDraft(Boolean(question.is_draft));
 
       // Load type-specific states
       if (question.jenis_soal === 'PG' && Array.isArray(question.opsi_json)) {
@@ -249,8 +254,7 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveQuestion = (saveAsDraft: boolean) => {
     setErrorMessage(null);
 
     if (!idSoal.trim()) {
@@ -261,7 +265,8 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
       setErrorMessage('Pilih Mata Pelajaran target.');
       return;
     }
-    if (!pertanyaan.trim()) {
+
+    if (!saveAsDraft && !pertanyaan.trim()) {
       setErrorMessage('Teks pertanyaan wajib diisi.');
       return;
     }
@@ -269,49 +274,75 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
     let finalOpsiJson: any = null;
     let finalKunciJson: any = null;
 
-    if (jenisSoal === 'PG') {
-      if (!opsiA.trim() || !opsiB.trim() || !opsiC.trim() || !opsiD.trim()) {
-        setErrorMessage('Seluruh opsi A, B, C, D untuk Pilihan Ganda wajib diisi.');
-        return;
+    if (!saveAsDraft) {
+      if (jenisSoal === 'PG') {
+        if (!opsiA.trim() || !opsiB.trim() || !opsiC.trim() || !opsiD.trim()) {
+          setErrorMessage('Seluruh opsi A, B, C, D untuk Pilihan Ganda wajib diisi.');
+          return;
+        }
+        finalOpsiJson = [opsiA.trim(), opsiB.trim(), opsiC.trim(), opsiD.trim()];
+        finalKunciJson = kunciPG;
+      } else if (jenisSoal === 'PGK') {
+        const validOptions = opsiPgk.map(o => o.trim()).filter(Boolean);
+        if (validOptions.length < 2) {
+          setErrorMessage('Minimal 2 opsi untuk Pilihan Ganda Kompleks.');
+          return;
+        }
+        if (kunciPgk.length === 0) {
+          setErrorMessage('Pilih minimal satu kunci jawaban yang benar untuk PGK.');
+          return;
+        }
+        finalOpsiJson = validOptions;
+        finalKunciJson = kunciPgk;
+      } else if (jenisSoal === 'MJ') {
+        const validPairs = mjPairs.filter(p => p.kiri.trim() && p.kanan.trim());
+        if (validPairs.length < 2) {
+          setErrorMessage('Minimal 2 pasang item untuk soal Menjodohkan.');
+          return;
+        }
+        const kiri = validPairs.map(p => p.kiri.trim());
+        const kanan = validPairs.map(p => p.kanan.trim());
+        const kunciMap: Record<string, string> = {};
+        validPairs.forEach(p => {
+          kunciMap[p.kiri.trim()] = p.kanan.trim();
+        });
+        finalOpsiJson = { kiri, kanan };
+        finalKunciJson = kunciMap;
+      } else if (jenisSoal === 'IS') {
+        if (!kunciIsian.trim()) {
+          setErrorMessage('Kunci jawaban isian singkat wajib diisi.');
+          return;
+        }
+        finalOpsiJson = null;
+        finalKunciJson = kunciIsian.split(',').map(s => s.trim()).filter(Boolean);
+      } else if (jenisSoal === 'UR') {
+        finalOpsiJson = null;
+        finalKunciJson = kunciUraian.trim() || 'Rubrik manual guru';
       }
-      finalOpsiJson = [opsiA.trim(), opsiB.trim(), opsiC.trim(), opsiD.trim()];
-      finalKunciJson = kunciPG;
-    } else if (jenisSoal === 'PGK') {
-      const validOptions = opsiPgk.map(o => o.trim()).filter(Boolean);
-      if (validOptions.length < 2) {
-        setErrorMessage('Minimal 2 opsi untuk Pilihan Ganda Kompleks.');
-        return;
+    } else {
+      // Draft mode: allow partial data
+      if (jenisSoal === 'PG') {
+        finalOpsiJson = [opsiA.trim(), opsiB.trim(), opsiC.trim(), opsiD.trim()];
+        finalKunciJson = kunciPG;
+      } else if (jenisSoal === 'PGK') {
+        finalOpsiJson = opsiPgk.map(o => o.trim());
+        finalKunciJson = kunciPgk;
+      } else if (jenisSoal === 'MJ') {
+        const kiri = mjPairs.map(p => p.kiri.trim());
+        const kanan = mjPairs.map(p => p.kanan.trim());
+        const kunciMap: Record<string, string> = {};
+        mjPairs.forEach(p => {
+          if (p.kiri.trim()) kunciMap[p.kiri.trim()] = p.kanan.trim();
+        });
+        finalOpsiJson = { kiri, kanan };
+        finalKunciJson = kunciMap;
+      } else if (jenisSoal === 'IS') {
+        finalOpsiJson = null;
+        finalKunciJson = kunciIsian ? kunciIsian.split(',').map(s => s.trim()).filter(Boolean) : [];
+      } else if (jenisSoal === 'UR') {
+        finalOpsiJson = null;
+        finalKunciJson = kunciUraian.trim() || 'Rubrik manual guru';
       }
-      if (kunciPgk.length === 0) {
-        setErrorMessage('Pilih minimal satu kunci jawaban yang benar untuk PGK.');
-        return;
-      }
-      finalOpsiJson = validOptions;
-      finalKunciJson = kunciPgk;
-    } else if (jenisSoal === 'MJ') {
-      const validPairs = mjPairs.filter(p => p.kiri.trim() && p.kanan.trim());
-      if (validPairs.length < 2) {
-        setErrorMessage('Minimal 2 pasang item untuk soal Menjodohkan.');
-        return;
-      }
-      const kiri = validPairs.map(p => p.kiri.trim());
-      const kanan = validPairs.map(p => p.kanan.trim());
-      const kunciMap: Record<string, string> = {};
-      validPairs.forEach(p => {
-        kunciMap[p.kiri.trim()] = p.kanan.trim();
-      });
-      finalOpsiJson = { kiri, kanan };
-      finalKunciJson = kunciMap;
-    } else if (jenisSoal === 'IS') {
-      if (!kunciIsian.trim()) {
-        setErrorMessage('Kunci jawaban isian singkat wajib diisi.');
-        return;
-      }
-      finalOpsiJson = null;
-      finalKunciJson = kunciIsian.split(',').map(s => s.trim()).filter(Boolean);
-    } else if (jenisSoal === 'UR') {
-      finalOpsiJson = null;
-      finalKunciJson = kunciUraian.trim() || 'Rubrik manual guru';
     }
 
     const payload: Question = {
@@ -319,16 +350,22 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
       id_mapel: idMapel.trim(),
       kode_soal: kodeSoal.trim().toUpperCase() || undefined,
       jenis_soal: jenisSoal,
-      pertanyaan: pertanyaan.trim(),
+      pertanyaan: pertanyaan.trim() || '(Draft Soal Tanpa Pertanyaan)',
       url_gambar: urlGambar.trim() || undefined,
       opsi_json: finalOpsiJson,
       kunci_jawaban_json: finalKunciJson,
       bobot: Number(bobot) > 0 ? Number(bobot) : 1,
       pembahasan: pembahasan.trim() || undefined,
+      is_draft: saveAsDraft,
     };
 
     onSave(payload);
     onClose();
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSaveQuestion(false);
   };
 
   return (
@@ -337,16 +374,23 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90 sticky top-0 z-10">
           <div>
-            <h3 className="font-bold text-lg text-white">
-              {isEditing ? `Edit Butir Soal (${question?.id_soal})` : 'Tambah Butir Soal Baru'}
-            </h3>
+            <div className="flex items-center space-x-2">
+              <h3 className="font-bold text-lg text-white">
+                {isEditing ? `Edit Butir Soal (${question?.id_soal})` : 'Tambah Butir Soal Baru'}
+              </h3>
+              {isDraft && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold">
+                  Status: Draft
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-400">
               Formulir terstandar format sheet BankSoal CBT Online
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -862,21 +906,41 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
           </div>
 
           {/* Footer Buttons */}
-          <div className="pt-4 border-t border-slate-800 flex items-center justify-end space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-slate-800 transition"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              className="flex items-center space-x-1.5 px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm shadow-md transition"
-            >
-              <Save className="w-4 h-4" />
-              <span>{isEditing ? 'Simpan Perubahan' : 'Tambah ke Bank Soal'}</span>
-            </button>
+          <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              {isDraft ? (
+                <span className="text-xs text-amber-300 font-medium">Soal ini saat ini tersimpan sebagai Draft.</span>
+              ) : (
+                <span className="text-xs text-slate-400">Soal aktif akan langsung tampil pada ujian siswa.</span>
+              )}
+            </div>
+
+            <div className="flex items-center space-x-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-xl text-xs sm:text-sm text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveQuestion(true)}
+                className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-amber-950/80 hover:bg-amber-900/80 text-amber-300 border border-amber-500/50 font-semibold text-xs transition cursor-pointer shadow-sm"
+                title="Simpan sebagai draft soal (belum aktif untuk siswa)"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Simpan Draft</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveQuestion(false)}
+                className="flex items-center space-x-1.5 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-md transition cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{isEditing ? 'Simpan & Publikasikan' : 'Tambah ke Bank Soal'}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

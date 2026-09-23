@@ -1049,6 +1049,18 @@ export async function sinkronSemuaHasilLokalKeGoogleSheets(
   targetUrl?: string,
   onProgress?: (current: number, total: number) => void
 ): Promise<{ success: boolean; message: string; countSynced: number; totalCount: number }> {
+  const results = getHasilUjian();
+  return sinkronDaftarHasilKeGoogleSheets(results, targetUrl, (curr, tot) => {
+    if (onProgress) onProgress(curr, tot);
+  });
+}
+
+// Sinkronkan Daftar Hasil Spesifik ke Google Sheets (dengan info item saat proses)
+export async function sinkronDaftarHasilKeGoogleSheets(
+  results: HasilUjian[],
+  targetUrl?: string,
+  onProgress?: (current: number, total: number, item?: HasilUjian) => void
+): Promise<{ success: boolean; message: string; countSynced: number; totalCount: number }> {
   const url = (targetUrl || getGasWebappUrl()).trim();
   if (!url) {
     return {
@@ -1059,7 +1071,6 @@ export async function sinkronSemuaHasilLokalKeGoogleSheets(
     };
   }
 
-  const results = getHasilUjian();
   if (!results || results.length === 0) {
     return {
       success: true,
@@ -1109,7 +1120,7 @@ export async function sinkronSemuaHasilLokalKeGoogleSheets(
   for (let i = 0; i < results.length; i++) {
     const item = results[i];
     if (onProgress) {
-      onProgress(i + 1, results.length);
+      onProgress(i + 1, results.length, item);
     }
     try {
       await kirimHasilKeGoogleSheets(item, url);
@@ -1128,9 +1139,66 @@ export async function sinkronSemuaHasilLokalKeGoogleSheets(
 
   return {
     success: true,
-    message: `Berhasil menyinkronkan ${results.length} hasil ujian lokal ke Google Sheets (Tab HasilUjian)!`,
+    message: `Berhasil menyinkronkan ${results.length} hasil ujian ke Google Sheets (Tab HasilUjian)!`,
     countSynced,
     totalCount: results.length,
+  };
+}
+
+// ============================================================
+// DUMMY / TEST RESULTS MANAGEMENT HELPERS
+// ============================================================
+const DUMMY_HASIL_DEFAULT_IDS = new Set(DEFAULT_HASIL.map(h => h.id_hasil));
+
+export function isDummyHasil(hasil: HasilUjian): boolean {
+  if (!hasil) return false;
+  if (hasil.is_dummy === true) return true;
+  if (DUMMY_HASIL_DEFAULT_IDS.has(hasil.id_hasil)) return true;
+
+  const idUpper = (hasil.id_hasil || '').toUpperCase();
+  if (idUpper.startsWith('DUMMY') || idUpper.startsWith('TEST') || idUpper.startsWith('SAMPLE') || idUpper.startsWith('SIM-')) {
+    return true;
+  }
+
+  const namaLower = (hasil.nama_siswa || '').toLowerCase();
+  if (namaLower.includes('dummy') || namaLower.includes('contoh') || namaLower.includes('simulasi')) {
+    return true;
+  }
+
+  // Identifikasi siswa contoh bawaan sistem SD
+  const sampleNames = ['ahmad faiz pratama', 'budi santoso', 'citra dewi lestari', 'dimas anggara', 'eka putri rahayu'];
+  const sampleNisns = ['12345', '12346', '12347', '12348', '12349'];
+  if (sampleNisns.includes(hasil.nisn) && sampleNames.includes(namaLower) && idUpper.startsWith('H-10')) {
+    return true;
+  }
+
+  return false;
+}
+
+// Hapus HANYA Hasil Ujian Dummy / Percobaan (Hasil Siswa Asli Tetap Aman)
+export function hapusHanyaHasilDummy(): {
+  jumlahDihapus: number;
+  sisaHasil: number;
+  hasilDihapus: HasilUjian[];
+} {
+  const current = getHasilUjian();
+  const dummyList: HasilUjian[] = [];
+  const realList: HasilUjian[] = [];
+
+  current.forEach((item) => {
+    if (isDummyHasil(item)) {
+      dummyList.push(item);
+    } else {
+      realList.push(item);
+    }
+  });
+
+  saveHasilUjian(realList);
+
+  return {
+    jumlahDihapus: dummyList.length,
+    sisaHasil: realList.length,
+    hasilDihapus: dummyList,
   };
 }
 

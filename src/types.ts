@@ -25,6 +25,7 @@ export interface Question {
   kunci_jawaban_json: string | string[] | Record<string, string>;
   bobot: number;
   pembahasan?: string;
+  is_draft?: boolean;
 }
 
 export interface MataPelajaran {
@@ -50,6 +51,14 @@ export interface Siswa {
   pin_siswa: string;
 }
 
+export interface KomposisiBentukSoal {
+  PG: number;
+  PGK: number;
+  MJ: number;
+  IS: number;
+  UR: number;
+}
+
 export interface HasilUjian {
   id_hasil: string;
   timestamp: string;
@@ -66,6 +75,8 @@ export interface HasilUjian {
   status_koreksi: 'SELESAI' | 'PENDING_URAIAN';
   pelanggaran_curang: number;
   durasi_menit: number;
+  catatan_guru?: string;
+  is_dummy?: boolean;
 }
 
 export interface DistraktorInfo {
@@ -125,7 +136,7 @@ export interface KodeSoalPaket {
 }
 
 export type ViewMode = 'login' | 'ujian' | 'hasil' | 'admin';
-export type AdminTab = 'sheets' | 'kode-soal' | 'analisis' | 'ai-generator' | 'riwayat-soal' | 'share-link' | 'gas-setup' | 'hasil-rekap' | 'api-key';
+export type AdminTab = 'sheets' | 'kode-soal' | 'analisis' | 'ai-generator' | 'riwayat-soal' | 'share-link' | 'gas-setup' | 'bulk-data' | 'hasil-rekap' | 'api-key';
 
 export type DatabaseMode = 'simulator' | 'database_penuh';
 export type StorageStatus = 'lokal' | 'gdrive';

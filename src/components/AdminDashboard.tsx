@@ -72,7 +72,12 @@ import {
   Key,
   Image as ImageIcon,
   Maximize2,
-  X
+  X,
+  ClipboardList,
+  FileCheck,
+  PenLine,
+  FileText,
+  Layers
 } from 'lucide-react';
 import { EnhancedItemAnalysis } from './admin/EnhancedItemAnalysis';
 import { AiGeneratorTab } from './admin/AiGeneratorTab';
@@ -81,6 +86,9 @@ import { ShareLinkModal } from './admin/ShareLinkModal';
 import { QuestionEditModal } from './admin/QuestionEditModal';
 import { StudentCrudModal } from './admin/StudentCrudModal';
 import { GeminiApiKeyTab } from './admin/GeminiApiKeyTab';
+import { ManualEssayGradingModal } from './admin/ManualEssayGradingModal';
+import { BulkStudentImportModal } from './admin/BulkStudentImportModal';
+import { BulkDataManagementPanel } from './admin/BulkDataManagementPanel';
 
 interface AdminDashboardProps {
   mapelList: MataPelajaran[];
@@ -121,6 +129,62 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isStorageModalOpen, setIsStorageModalOpen] = useState<boolean>(false);
   const [isDeleteDummyModalOpen, setIsDeleteDummyModalOpen] = useState<boolean>(false);
   const [dbMode, setDbMode] = useState<DatabaseMode>(() => getDatabaseMode());
+
+  // Manual Essay Grading Modal State
+  const [selectedGradingExam, setSelectedGradingExam] = useState<HasilUjian | null>(null);
+  const [isGradingModalOpen, setIsGradingModalOpen] = useState<boolean>(false);
+
+  // Bulk Student Import Modal State
+  const [isBulkStudentImportOpen, setIsBulkStudentImportOpen] = useState<boolean>(false);
+
+  // Filters
+  const [soalDraftFilter, setSoalDraftFilter] = useState<'all' | 'active' | 'draft'>('all');
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
+  const [hasilStatusFilter, setHasilStatusFilter] = useState<'all' | 'pending' | 'selesai'>('all');
+
+  // Manual essay grading handlers
+  const handleOpenGrading = (hasil: HasilUjian) => {
+    setSelectedGradingExam(hasil);
+    setIsGradingModalOpen(true);
+  };
+
+  const handleSaveGradedExam = async (updatedExam: HasilUjian) => {
+    const nextList = hasilList.map(h => h.id_hasil === updatedExam.id_hasil ? updatedExam : h);
+    onUpdateHasil(nextList);
+    setIsGradingModalOpen(false);
+    setSelectedGradingExam(null);
+
+    // If GAS connected, sync updated grade to Google Sheets
+    const targetGasUrl = getGasWebappUrl();
+    if (targetGasUrl) {
+      await kirimHasilKeGoogleSheets(updatedExam, targetGasUrl);
+    }
+  };
+
+  // Bulk student import handler
+  const handleBulkImportStudents = (newStudents: Siswa[], mode: 'append' | 'replace') => {
+    let nextSiswaList: Siswa[] = [];
+    if (mode === 'replace') {
+      nextSiswaList = newStudents;
+    } else {
+      const existingMap = new Map<string, Siswa>();
+      siswaList.forEach(s => existingMap.set(s.nisn, s));
+      newStudents.forEach(s => existingMap.set(s.nisn, s));
+      nextSiswaList = Array.from(existingMap.values());
+    }
+    onUpdateSiswa(nextSiswaList);
+  };
+
+  // Toggle draft status directly from question bank table
+  const handleToggleDraftStatus = (id_soal: string) => {
+    const updated = soalList.map(s => {
+      if (s.id_soal === id_soal) {
+        return { ...s, is_draft: !s.is_draft };
+      }
+      return s;
+    });
+    onUpdateSoal(updated);
+  };
 
   // Refresh all state from local storage when synced or dummy data deleted
   const handleDataRefreshed = () => {
@@ -443,9 +507,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     document.body.removeChild(link);
   };
 
-  // Filtered Soal
+  // Unique Classes list for filtering
+  const uniqueClasses = Array.from(new Set(siswaList.map(s => s.kelas))).filter(Boolean).sort();
+
+  // Filtered Soal (with Draft filter support)
   const filteredSoal = soalList.filter(s => {
     if (selectedMapelFilter !== 'all' && s.id_mapel !== selectedMapelFilter) {
+      return false;
+    }
+    if (soalDraftFilter === 'active' && s.is_draft) {
+      return false;
+    }
+    if (soalDraftFilter === 'draft' && !s.is_draft) {
       return false;
     }
     if (searchSoalTerm.trim()) {
@@ -460,8 +533,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return true;
   });
 
-  // Filtered Siswa
+  // Filtered Siswa (with Class filter support)
   const filteredSiswa = siswaList.filter(st => {
+    if (selectedClassFilter !== 'all' && st.kelas !== selectedClassFilter) {
+      return false;
+    }
     if (searchSiswaTerm.trim()) {
       const q = searchSiswaTerm.toLowerCase();
       return (
@@ -469,6 +545,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         st.nama_siswa.toLowerCase().includes(q) ||
         st.kelas.toLowerCase().includes(q)
       );
+    }
+    return true;
+  });
+
+  // Filtered Hasil (with status pending uraian support)
+  const filteredHasil = hasilList.filter(h => {
+    if (hasilStatusFilter === 'pending' && h.status_koreksi !== 'PENDING_URAIAN') {
+      return false;
+    }
+    if (hasilStatusFilter === 'selesai' && h.status_koreksi === 'PENDING_URAIAN') {
+      return false;
     }
     return true;
   });
@@ -578,6 +665,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('bulk-data')}
+              className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
+                activeTab === 'bulk-data'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Bulk Data Management</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('api-key')}
               className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
                 activeTab === 'api-key'
@@ -634,6 +733,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* Right: Quick Action Buttons (Sync & Delete Dummy) */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* Tombol Bulk Data Management */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('bulk-data')}
+              className={`px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center space-x-1.5 transition shadow-sm ${
+                activeTab === 'bulk-data'
+                  ? 'bg-indigo-600 text-white border-indigo-500 shadow-indigo-950/40'
+                  : 'bg-indigo-950/80 hover:bg-indigo-900/80 border-indigo-500/50 text-indigo-300'
+              }`}
+              title="Buka panel Bulk Data Management untuk sinkronisasi massal hasil lokal ke Google Apps Script dan pembersihan dummy"
+            >
+              <Layers className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Bulk Data & Sync</span>
+            </button>
+
             {/* Tombol Sinkron Data */}
             <button
               type="button"
@@ -701,13 +815,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
 
                 {activeSheetTab === 'DataSiswa' && (
-                  <button
-                    onClick={handleOpenAddStudent}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center space-x-1.5 transition shadow-sm"
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    <span>Tambah Data Siswa</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsBulkStudentImportOpen(true)}
+                      className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center space-x-1.5 transition shadow-sm cursor-pointer"
+                      title="Salin dan tempel daftar nama siswa langsung dari spreadsheet Excel atau Google Sheets"
+                    >
+                      <ClipboardList className="w-4 h-4" />
+                      <span>Salin/Tempel dari Excel</span>
+                    </button>
+                    <button
+                      onClick={handleOpenAddStudent}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center space-x-1.5 transition"
+                    >
+                      <UserPlus className="w-4 h-4 text-emerald-400" />
+                      <span>Tambah Manual</span>
+                    </button>
+                  </>
                 )}
 
                 <button
@@ -790,25 +915,66 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {activeSheetTab === 'BankSoal' && (
               <div className="space-y-4">
                 {/* BankSoal Filter & Search Controls */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800">
-                  <div className="flex items-center space-x-2">
-                    <Filter className="w-4 h-4 text-slate-400" />
-                    <label className="text-xs text-slate-400">Mapel:</label>
-                    <select
-                      value={selectedMapelFilter}
-                      onChange={(e) => setSelectedMapelFilter(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white"
-                    >
-                      <option value="all">Semua Mata Pelajaran ({soalList.length})</option>
-                      {mapelList.map((m) => {
-                        const cnt = soalList.filter(s => s.id_mapel === m.id_mapel).length;
-                        return (
-                          <option key={m.id_mapel} value={m.id_mapel}>
-                            {m.id_mapel} - {m.nama_mapel} ({cnt} soal)
-                          </option>
-                        );
-                      })}
-                    </select>
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center space-x-2">
+                      <Filter className="w-4 h-4 text-slate-400" />
+                      <label className="text-xs text-slate-400">Mapel:</label>
+                      <select
+                        value={selectedMapelFilter}
+                        onChange={(e) => setSelectedMapelFilter(e.target.value)}
+                        className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white"
+                      >
+                        <option value="all">Semua Mata Pelajaran ({soalList.length})</option>
+                        {mapelList.map((m) => {
+                          const cnt = soalList.filter(s => s.id_mapel === m.id_mapel).length;
+                          return (
+                            <option key={m.id_mapel} value={m.id_mapel}>
+                              {m.id_mapel} - {m.nama_mapel} ({cnt} soal)
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    {/* Filter Status Draft vs Aktif */}
+                    <div className="flex items-center p-0.5 bg-slate-900 rounded-xl border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setSoalDraftFilter('all')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                          soalDraftFilter === 'all'
+                            ? 'bg-slate-800 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Semua ({soalList.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSoalDraftFilter('active')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center space-x-1 ${
+                          soalDraftFilter === 'active'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-emerald-300'
+                        }`}
+                      >
+                        <Check className="w-3 h-3" />
+                        <span>Aktif ({soalList.filter(s => !s.is_draft).length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSoalDraftFilter('draft')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center space-x-1 ${
+                          soalDraftFilter === 'draft'
+                            ? 'bg-amber-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-amber-300'
+                        }`}
+                      >
+                        <FileText className="w-3 h-3" />
+                        <span>Draft ({soalList.filter(s => s.is_draft).length})</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex items-center space-x-2 flex-1 sm:max-w-xs">
@@ -830,6 +996,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <th className="p-3">id_soal</th>
                         <th className="p-3">id_mapel</th>
                         <th className="p-3">jenis_soal</th>
+                        <th className="p-3">status</th>
                         <th className="p-3">gambar</th>
                         <th className="p-3">pertanyaan</th>
                         <th className="p-3">opsi_json</th>
@@ -847,6 +1014,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-200">
                               {s.jenis_soal}
                             </span>
+                          </td>
+                          <td className="p-3">
+                            {s.is_draft ? (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleDraftStatus(s.id_soal)}
+                                className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 inline-flex items-center space-x-1 hover:bg-amber-500/30 transition cursor-pointer"
+                                title="Soal ini adalah Draft. Klik untuk mempublikasikan agar aktif bagi siswa"
+                              >
+                                <FileText className="w-2.5 h-2.5" />
+                                <span>DRAFT</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleDraftStatus(s.id_soal)}
+                                className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 inline-flex items-center space-x-1 hover:bg-emerald-500/30 transition cursor-pointer"
+                                title="Soal Aktif. Klik untuk menyimpan sebagai draft"
+                              >
+                                <Check className="w-2.5 h-2.5" />
+                                <span>AKTIF</span>
+                              </button>
+                            )}
                           </td>
                           <td className="p-3">
                             {s.url_gambar ? (
@@ -884,6 +1074,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div className="flex items-center justify-end space-x-1.5">
                               <button
                                 type="button"
+                                onClick={() => handleToggleDraftStatus(s.id_soal)}
+                                className={`px-2 py-1.5 rounded-lg text-xs font-semibold transition flex items-center space-x-1 shadow-sm ${
+                                  s.is_draft
+                                    ? 'bg-emerald-950/80 text-emerald-300 hover:bg-emerald-600 hover:text-white border border-emerald-800/80'
+                                    : 'bg-amber-950/80 text-amber-300 hover:bg-amber-600 hover:text-white border border-amber-800/80'
+                                }`}
+                                title={s.is_draft ? 'Publikasikan Soal' : 'Jadikan Draft'}
+                              >
+                                {s.is_draft ? <Check className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
+                                <span>{s.is_draft ? 'Publikasikan' : 'Draft'}</span>
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => handleOpenEditQuestion(s)}
                                 className="px-2.5 py-1.5 rounded-lg bg-indigo-950/80 text-indigo-300 hover:bg-indigo-600 hover:text-white border border-indigo-800/80 transition flex items-center space-x-1 text-xs font-semibold shadow-sm"
                                 title="Edit Soal & Gambar"
@@ -913,11 +1116,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* TAB CONTENT: TAB DATASISWA */}
             {activeSheetTab === 'DataSiswa' && (
               <div className="space-y-4">
-                {/* Search Bar for Siswa */}
+                {/* Search & Class Filter Bar for Siswa */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800">
-                  <div className="text-xs text-slate-400">
-                    Total Siswa Terdaftar: <strong className="text-white">{siswaList.length} Siswa</strong>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="text-xs text-slate-400">
+                      Total Siswa: <strong className="text-white">{filteredSiswa.length} / {siswaList.length} Siswa</strong>
+                    </div>
+
+                    {/* Filter Kelas */}
+                    <div className="flex items-center space-x-2">
+                      <Filter className="w-3.5 h-3.5 text-slate-400" />
+                      <label className="text-xs text-slate-400">Kelas:</label>
+                      <select
+                        value={selectedClassFilter}
+                        onChange={(e) => setSelectedClassFilter(e.target.value)}
+                        className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1 text-xs text-white"
+                      >
+                        <option value="all">Semua Kelas ({siswaList.length})</option>
+                        {uniqueClasses.map((cls) => {
+                          const count = siswaList.filter(s => s.kelas === cls).length;
+                          return (
+                            <option key={cls} value={cls}>
+                              Kelas {cls} ({count})
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
                   </div>
+
                   <div className="flex items-center space-x-2 flex-1 sm:max-w-xs">
                     <Search className="w-4 h-4 text-slate-400" />
                     <input
@@ -946,7 +1173,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <tr key={st.nisn} className="hover:bg-slate-800/40">
                           <td className="p-3 font-bold text-white">{st.nisn}</td>
                           <td className="p-3 font-sans font-semibold text-slate-200">{st.nama_siswa}</td>
-                          <td className="p-3">{st.kelas}</td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                              {st.kelas}
+                            </span>
+                          </td>
                           <td className="p-3 text-emerald-400 tracking-widest">{st.pin_siswa}</td>
                           <td className="p-3 text-right font-sans">
                             <div className="flex items-center justify-end space-x-1">
@@ -976,51 +1207,134 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* TAB CONTENT: TAB HASILUJIAN */}
             {activeSheetTab === 'HasilUjian' && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="bg-slate-950 text-slate-400 uppercase font-mono tracking-wider border-b border-slate-800">
-                    <tr>
-                      <th className="p-3">id_hasil</th>
-                      <th className="p-3">timestamp</th>
-                      <th className="p-3">nisn</th>
-                      <th className="p-3">nama_siswa</th>
-                      <th className="p-3">id_mapel</th>
-                      <th className="p-3">total_skor</th>
-                      <th className="p-3">nilai_akhir</th>
-                      <th className="p-3">curang</th>
-                      <th className="p-3">status_koreksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 font-mono">
-                    {hasilList.map((h) => (
-                      <tr key={h.id_hasil} className="hover:bg-slate-800/40">
-                        <td className="p-3 font-bold text-white">{h.id_hasil}</td>
-                        <td className="p-3 text-slate-400">{h.timestamp}</td>
-                        <td className="p-3">{h.nisn}</td>
-                        <td className="p-3 font-sans font-medium text-slate-200">{h.nama_siswa}</td>
-                        <td className="p-3 text-emerald-400">{h.id_mapel}</td>
-                        <td className="p-3 font-bold">{h.skor_total} / {h.total_bobot}</td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded font-black ${
-                            h.nilai_akhir >= 75 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
-                          }`}>
-                            {h.nilai_akhir}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <span className={h.pelanggaran_curang > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'}>
-                            {h.pelanggaran_curang}x
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300">
-                            {h.status_koreksi}
-                          </span>
-                        </td>
+              <div className="space-y-4">
+                {/* Filter & Status Koreksi Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-xs text-slate-400 font-medium">Status Koreksi:</span>
+                    <div className="flex items-center p-0.5 bg-slate-900 rounded-xl border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setHasilStatusFilter('all')}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                          hasilStatusFilter === 'all'
+                            ? 'bg-slate-800 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Semua ({hasilList.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHasilStatusFilter('pending')}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center space-x-1.5 ${
+                          hasilStatusFilter === 'pending'
+                            ? 'bg-amber-600 text-white shadow-sm'
+                            : 'text-amber-400 hover:text-white'
+                        }`}
+                      >
+                        <PenLine className="w-3.5 h-3.5" />
+                        <span>Perlu Koreksi ({hasilList.filter(h => h.status_koreksi === 'PENDING_URAIAN').length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHasilStatusFilter('selesai')}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center space-x-1.5 ${
+                          hasilStatusFilter === 'selesai'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'text-emerald-400 hover:text-white'
+                        }`}
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Selesai ({hasilList.filter(h => h.status_koreksi !== 'PENDING_URAIAN').length})</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-slate-400">
+                    Menampilkan <strong className="text-white">{filteredHasil.length}</strong> dari <strong className="text-white">{hasilList.length}</strong> Hasil
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950 text-slate-400 uppercase font-mono tracking-wider border-b border-slate-800">
+                      <tr>
+                        <th className="p-3">id_hasil</th>
+                        <th className="p-3">timestamp</th>
+                        <th className="p-3">nisn</th>
+                        <th className="p-3">nama_siswa</th>
+                        <th className="p-3">kelas</th>
+                        <th className="p-3">id_mapel</th>
+                        <th className="p-3">total_skor</th>
+                        <th className="p-3">nilai_akhir</th>
+                        <th className="p-3">curang</th>
+                        <th className="p-3">status_koreksi</th>
+                        <th className="p-3">catatan_guru</th>
+                        <th className="p-3 text-right">Aksi Koreksi</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                      {filteredHasil.map((h) => (
+                        <tr key={h.id_hasil} className="hover:bg-slate-800/40">
+                          <td className="p-3 font-bold text-white">{h.id_hasil}</td>
+                          <td className="p-3 text-slate-400">{h.timestamp}</td>
+                          <td className="p-3">{h.nisn}</td>
+                          <td className="p-3 font-sans font-medium text-slate-200">{h.nama_siswa}</td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                              {h.kelas}
+                            </span>
+                          </td>
+                          <td className="p-3 text-emerald-400">{h.id_mapel}</td>
+                          <td className="p-3 font-bold">{h.skor_total} / {h.total_bobot}</td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded font-black ${
+                              h.nilai_akhir >= 75 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                            }`}>
+                              {h.nilai_akhir}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <span className={h.pelanggaran_curang > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'}>
+                              {h.pelanggaran_curang}x
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            {h.status_koreksi === 'PENDING_URAIAN' ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 inline-flex items-center space-x-1 animate-pulse">
+                                <PenLine className="w-2.5 h-2.5" />
+                                <span>PENDING URAIAN</span>
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                {h.status_koreksi}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 font-sans max-w-xs truncate text-slate-400" title={h.catatan_guru || '-'}>
+                            {h.catatan_guru || '-'}
+                          </td>
+                          <td className="p-3 text-right font-sans whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenGrading(h)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 ml-auto shadow-sm cursor-pointer ${
+                                h.status_koreksi === 'PENDING_URAIAN'
+                                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shadow-amber-500/20 shadow-lg'
+                                  : 'bg-indigo-950/80 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-800'
+                              }`}
+                              title="Buka Lembar Penilaian Manual Soal Uraian"
+                            >
+                              <PenLine className="w-3.5 h-3.5" />
+                              <span>{h.status_koreksi === 'PENDING_URAIAN' ? 'Koreksi Uraian' : 'Ubah Nilai'}</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -1268,6 +1582,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {/* ============================================================ */}
+        {/* TAB 8: BULK DATA MANAGEMENT (SYNC & DUMMY CLEANUP)           */}
+        {/* ============================================================ */}
+        {activeTab === 'bulk-data' && (
+          <BulkDataManagementPanel
+            hasilList={hasilList}
+            siswaList={siswaList}
+            soalList={soalList}
+            mapelList={mapelList}
+            onUpdateHasil={onUpdateHasil}
+            onRefreshAllData={handleDataRefreshed}
+          />
+        )}
+
+        {/* ============================================================ */}
         {/* TAB 7: GEMINI AI API KEY MANAGEMENT                          */}
         {/* ============================================================ */}
         {activeTab === 'api-key' && (
@@ -1384,6 +1712,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         )}
+
+        {/* Modal: Penilaian Manual Soal Uraian (Manual Essay Grading) */}
+        <ManualEssayGradingModal
+          isOpen={isGradingModalOpen}
+          onClose={() => {
+            setIsGradingModalOpen(false);
+            setSelectedGradingExam(null);
+          }}
+          hasil={selectedGradingExam}
+          bankSoal={soalList}
+          onSaveGrading={handleSaveGradedExam}
+        />
+
+        {/* Modal: Salin/Tempel Siswa dari Excel / Teks (Bulk Student Import) */}
+        <BulkStudentImportModal
+          isOpen={isBulkStudentImportOpen}
+          onClose={() => setIsBulkStudentImportOpen(false)}
+          existingClasses={uniqueClasses}
+          onImport={handleBulkImportStudents}
+        />
 
         {/* Modal: Status Penyimpanan, Switch Database Penuh & Sinkronisasi */}
         <StorageStatusModal

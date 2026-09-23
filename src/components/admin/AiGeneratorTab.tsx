@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MataPelajaran, Question, QuestionType, RiwayatPaketSoal } from '../../types';
+import { MataPelajaran, Question, QuestionType, RiwayatPaketSoal, KomposisiBentukSoal } from '../../types';
 import { 
   Sparkles, 
   Send, 
@@ -14,7 +14,10 @@ import {
   Zap,
   HelpCircle,
   Key,
-  ExternalLink
+  ExternalLink,
+  Sliders,
+  Check,
+  ListOrdered
 } from 'lucide-react';
 import { getStoredGeminiKey, getGeminiServerStatus } from '../../services/geminiKeyService';
 
@@ -39,13 +42,46 @@ export const AiGeneratorTab: React.FC<AiGeneratorTabProps> = ({
   const [kelas, setKelas] = useState<string>('Kelas 5');
   const [idMapel, setIdMapel] = useState<string>(mapelList[0]?.id_mapel || 'MAT-03');
   const [bentukSoal, setBentukSoal] = useState<string>('Campuran');
-  const [jumlah, setJumlah] = useState<number>(3);
+  const [jumlah, setJumlah] = useState<number>(40);
+
+  // Custom question count per question type
+  const [useCustomComposition, setUseCustomComposition] = useState<boolean>(true);
+  const [komposisi, setKomposisi] = useState<KomposisiBentukSoal>({
+    PG: 25,
+    PGK: 5,
+    MJ: 3,
+    IS: 4,
+    UR: 3,
+  });
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastGeneratedQuestions, setLastGeneratedQuestions] = useState<Question[]>([]);
   const [hasApiKey, setHasApiKey] = useState<boolean>(false);
+
+  // Auto-sync total jumlah when custom composition is edited
+  const totalFromKomposisi = (komposisi.PG || 0) + (komposisi.PGK || 0) + (komposisi.MJ || 0) + (komposisi.IS || 0) + (komposisi.UR || 0);
+
+  const handleUpdateKomposisi = (type: keyof KomposisiBentukSoal, val: number) => {
+    const clamped = Math.max(0, Math.min(40, val));
+    const nextKomposisi = {
+      ...komposisi,
+      [type]: clamped,
+    };
+    setKomposisi(nextKomposisi);
+    const newTotal = Object.values(nextKomposisi).reduce((a, b) => a + b, 0);
+    setJumlah(Math.min(40, Math.max(1, newTotal)));
+  };
+
+  const handleApplyPreset = (pg: number, pgk: number, mj: number, is: number, ur: number) => {
+    const p = { PG: pg, PGK: pgk, MJ: mj, IS: is, UR: ur };
+    setKomposisi(p);
+    const tot = pg + pgk + mj + is + ur;
+    setJumlah(tot);
+    setUseCustomComposition(true);
+    setBentukSoal('Campuran');
+  };
 
   useEffect(() => {
     const key = getStoredGeminiKey();
@@ -85,8 +121,9 @@ export const AiGeneratorTab: React.FC<AiGeneratorTabProps> = ({
           kelas,
           idMapel,
           namaMapel: selectedMapel?.nama_mapel || idMapel,
-          jumlah: Number(jumlah) || 3,
+          jumlah: Number(jumlah) || 40,
           bentukSoal,
+          komposisi: useCustomComposition ? komposisi : undefined,
           apiKey: clientKey || undefined,
         }),
       });
@@ -108,13 +145,18 @@ export const AiGeneratorTab: React.FC<AiGeneratorTabProps> = ({
       // 2. Direct client-side Gemini generation if serverless/proxy route is unavailable (e.g. Vercel)
       if (generatedList.length === 0 && clientKey) {
         try {
+          let breakdownInfo = '';
+          if (useCustomComposition) {
+            breakdownInfo = `Komposisi wajib: ${komposisi.PG} PG, ${komposisi.PGK} PGK, ${komposisi.MJ} Menjodohkan, ${komposisi.IS} Isian Singkat, ${komposisi.UR} Uraian.`;
+          }
           const directPrompt = `Anda adalah asisten kurikulum perancang butir soal ujian Computer Based Test (CBT) profesional di Indonesia.
-Buat ${jumlah || 3} butir soal berkualitas tinggi dengan parameter berikut:
+Buat ${jumlah || 40} butir soal berkualitas tinggi dengan parameter berikut:
 - Jenjang Pendidikan: ${tingkat || 'SD / SMP / SMA'}
 - Tingkat Kelas: ${kelas || 'Umum'}
 - Mata Pelajaran: ${selectedMapel?.nama_mapel || idMapel || 'Umum'} (ID Mapel: ${idMapel || 'MAPEL-01'})
 - Topik / Materi: ${topic || 'Materi Umum'}
 - Bentuk Soal: ${bentukSoal || 'Campuran'}
+${breakdownInfo ? `- ${breakdownInfo}` : ''}
 ${promptKustom ? `- Instruksi Tambahan / Kisi-kisi: ${promptKustom}` : ''}
 
 Peraturan format butir soal:
@@ -173,72 +215,84 @@ Balas HANYA JSON array valid murni:
       // 3. Intelligent pedagogical fallback if API returns error or no key configured
       if (generatedList.length === 0) {
         const timestamp = Date.now().toString().slice(-4);
-        const count = Math.min(20, Math.max(1, Number(jumlah) || 3));
+        const count = Math.min(40, Math.max(1, Number(jumlah) || 40));
 
-        for (let i = 0; i < count; i++) {
-          const qNum = i + 1;
-          const qId = `AI${timestamp}${qNum}`;
-
-          let chosenType: QuestionType = 'PG';
+        let targetTypes: QuestionType[] = [];
+        if (useCustomComposition) {
+          for (let k = 0; k < (komposisi.PG || 0); k++) targetTypes.push('PG');
+          for (let k = 0; k < (komposisi.PGK || 0); k++) targetTypes.push('PGK');
+          for (let k = 0; k < (komposisi.MJ || 0); k++) targetTypes.push('MJ');
+          for (let k = 0; k < (komposisi.IS || 0); k++) targetTypes.push('IS');
+          for (let k = 0; k < (komposisi.UR || 0); k++) targetTypes.push('UR');
+        }
+        if (targetTypes.length === 0) {
           if (bentukSoal === 'Campuran') {
             const types: QuestionType[] = ['PG', 'PGK', 'IS', 'UR', 'MJ'];
-            chosenType = types[i % types.length];
-          } else if (['PG', 'PGK', 'MJ', 'IS', 'UR'].includes(bentukSoal)) {
-            chosenType = bentukSoal as QuestionType;
+            for (let i = 0; i < count; i++) targetTypes.push(types[i % types.length]);
+          } else {
+            for (let i = 0; i < count; i++) targetTypes.push(bentukSoal as QuestionType);
           }
+        }
+        targetTypes = targetTypes.slice(0, count);
+
+        for (let i = 0; i < targetTypes.length; i++) {
+          const qNum = i + 1;
+          const qId = `AI${timestamp}${qNum < 10 ? '0' + qNum : qNum}`;
+          const chosenType = targetTypes[i];
 
           if (chosenType === 'PG') {
+            const mult = (qNum % 5) + 2;
             generatedList.push({
               id_soal: qId,
               id_mapel: idMapel,
               jenis_soal: 'PG',
-              pertanyaan: `[${tingkat} ${kelas}] Berdasarkan topik "${topic}": Pada suatu kegiatan ${topic.toLowerCase()}, jika terdapat ${12 * qNum} satuan yang dibagi merata ke dalam ${3 * qNum} kelompok, berapakah jumlah pada masing-masing kelompok?`,
+              pertanyaan: `[${tingkat} ${kelas}] Nomor ${qNum} terkait materi "${topic}": Seorang peserta didik mempelajari ${topic.toLowerCase()} dengan nilai awal ${12 * mult}. Jika nilai tersebut dibagi rata ke dalam ${3 * mult} bagian yang sama besar, berapakah hasil yang diperoleh?`,
               opsi_json: [
-                `${2 * qNum} satuan`,
-                `4 satuan`,
-                `${6 * qNum} satuan`,
-                `${8 * qNum} satuan`,
+                `${2 * mult} bagian`,
+                `4 bagian`,
+                `${mult + 3} bagian`,
+                `${8 * mult} bagian`,
               ],
               kunci_jawaban_json: 'B',
               bobot: 1,
-              pembahasan: `${12 * qNum} dibagi ${3 * qNum} = 4. Jawaban yang tepat adalah opsi B.`,
+              pembahasan: `Langkah: ${12 * mult} dibagi ${3 * mult} menghasilkan 4. Opsi B adalah jawaban yang tepat.`,
             });
           } else if (chosenType === 'PGK') {
             generatedList.push({
               id_soal: qId,
               id_mapel: idMapel,
               jenis_soal: 'PGK',
-              pertanyaan: `[${tingkat} ${kelas}] Terkait materi "${topic}": Manakah dari pernyataan di bawah ini yang bernilai benar? (Pilih semua yang sesuai)`,
+              pertanyaan: `[${tingkat} ${kelas}] Nomor ${qNum} (AKM Literasi) materi "${topic}": Manakah dari pernyataan-pernyataan di bawah ini yang bernilai BENAR? (Pilih semua opsi yang tepat)`,
               opsi_json: [
-                `Pernyataan A: Konsep dasar ${topic.toLowerCase()} berlaku konsisten.`,
-                `Pernyataan B: Nilai setara dapat dicapai melalui penyederhanaan pembilang dan penyebut.`,
-                `Pernyataan C: Hasil selalu bernilai negatif dalam kondisi riil.`,
-                `Pernyataan D: Perbandingan kuantitas berbanding lurus dengan rasio awal.`,
+                `Pernyataan 1: Konsep ${topic.toLowerCase()} dapat diterapkan pada perhitungan proporsional.`,
+                `Pernyataan 2: Bentuk paling sederhana dapat dicari menggunakan faktor persekutuan terbesar.`,
+                `Pernyataan 3: Hasil akhir selalu bernilai nol pada setiap kondisi nyata.`,
+                `Pernyataan 4: Perubahan skala berbanding lurus dengan rasio awal yang ditentukan.`,
               ],
               kunci_jawaban_json: [
-                `Pernyataan A: Konsep dasar ${topic.toLowerCase()} berlaku konsisten.`,
-                `Pernyataan B: Nilai setara dapat dicapai melalui penyederhanaan pembilang dan penyebut.`,
-                `Pernyataan D: Perbandingan kuantitas berbanding lurus dengan rasio awal.`,
+                `Pernyataan 1: Konsep ${topic.toLowerCase()} dapat diterapkan pada perhitungan proporsional.`,
+                `Pernyataan 2: Bentuk paling sederhana dapat dicari menggunakan faktor persekutuan terbesar.`,
+                `Pernyataan 4: Perubahan skala berbanding lurus dengan rasio awal yang ditentukan.`,
               ],
               bobot: 2,
-              pembahasan: 'Pernyataan A, B, dan D bernilai benar berdasarkan kaidah materi.',
+              pembahasan: 'Pernyataan 1, 2, dan 4 bernilai benar sesuai kaidah pembelajaran.',
             });
           } else if (chosenType === 'IS') {
             generatedList.push({
               id_soal: qId,
               id_mapel: idMapel,
               jenis_soal: 'IS',
-              pertanyaan: `[${tingkat} ${kelas}] Lengkapi kalimat berikut tentang "${topic}": Satuan terkecil dari hasil penyederhanaan nilai tersebut adalah...`,
-              kunci_jawaban_json: ['1/2', '0.5', 'setengah'],
+              pertanyaan: `[${tingkat} ${kelas}] Nomor ${qNum} (Isian): Pada materi "${topic}", nilai pecahan yang senilai dengan 2/4 dalam bentuk desimal adalah...`,
+              kunci_jawaban_json: ['0.5', '0,5', '1/2', 'setengah'],
               bobot: 1,
-              pembahasan: 'Nilai paling sederhana adalah 1/2 atau 0,5.',
+              pembahasan: 'Bentuk desimal dari 2/4 adalah 0,5 (atau 0.5).',
             });
           } else if (chosenType === 'MJ') {
             generatedList.push({
               id_soal: qId,
               id_mapel: idMapel,
               jenis_soal: 'MJ',
-              pertanyaan: `[${tingkat} ${kelas}] Jodohkan konsep ${topic} di kolom kiri dengan pasangan tepatnya di kolom kanan:`,
+              pertanyaan: `[${tingkat} ${kelas}] Nomor ${qNum} (Menjodohkan): Pasangkan konsep ${topic} pada kolom kiri dengan padanan yang tepat pada kolom kanan:`,
               opsi_json: {
                 kiri: ['Pecahan 1/4', 'Pecahan 2/4', 'Pecahan 3/4'],
                 kanan: ['0.25', '0.50', '0.75'],
@@ -249,7 +303,7 @@ Balas HANYA JSON array valid murni:
                 'Pecahan 3/4': '0.75',
               },
               bobot: 2,
-              pembahasan: '1/4 = 0.25, 2/4 = 0.50, 3/4 = 0.75.',
+              pembahasan: '1/4 = 0.25; 2/4 = 0.50; 3/4 = 0.75.',
             });
           } else {
             // UR
@@ -257,10 +311,10 @@ Balas HANYA JSON array valid murni:
               id_soal: qId,
               id_mapel: idMapel,
               jenis_soal: 'UR',
-              pertanyaan: `[${tingkat} ${kelas} - Uraian] Jelaskan secara terstruktur langkah-langkah dalam menyelesaikan permasalahan ${topic.toLowerCase()} dan berikan contoh konkret penerapannya!`,
-              kunci_jawaban_json: 'Memuat penjelasan konsep, langkah matematis yang runtut, dan contoh aplikatif.',
+              pertanyaan: `[${tingkat} ${kelas}] Nomor ${qNum} (Uraian): Uraikan secara jelas langkah-langkah penyelesaian masalah kontekstual pada topik "${topic}", dan berikan satu contoh penerapannya dalam kehidupan sehari-hari!`,
+              kunci_jawaban_json: 'Memuat identifikasi masalah, tahapan solusi runtut, dan contoh kehidupan nyata yang relevan.',
               bobot: 3,
-              pembahasan: 'Rubrik penilaian: Skor 3 jika langkah dan contoh lengkap; skor 2 jika konsep benar namun contoh kurang tepat; skor 1 jika sebagian kecil benar.',
+              pembahasan: 'Rubrik Penskoran: Skor 3 jika identifikasi, langkah, dan contoh lengkap; skor 2 jika langkah benar tanpa contoh lengkap; skor 1 jika hanya memuat gagasan umum.',
             });
           }
         }
@@ -467,7 +521,7 @@ Balas HANYA JSON array valid murni:
                 onChange={(e) => setBentukSoal(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-emerald-500"
               >
-                <option value="Campuran">Campuran (PG, PGK, IS, UR, MJ)</option>
+                <option value="Campuran">Campuran (Sesuai Kisi-kisi)</option>
                 <option value="PG">Pilihan Ganda (PG 4 Opsi)</option>
                 <option value="PGK">Pilihan Ganda Kompleks (PGK)</option>
                 <option value="IS">Isian Singkat (IS)</option>
@@ -479,38 +533,246 @@ Balas HANYA JSON array valid murni:
             {/* Jumlah Soal */}
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1 flex items-center justify-between">
-                <span>Jumlah Soal *</span>
+                <span>Jumlah Total *</span>
                 <span className="text-emerald-400 font-bold">{jumlah} Soal</span>
               </label>
               <input
                 type="number"
                 min={1}
-                max={20}
+                max={40}
                 value={jumlah}
-                onChange={(e) => setJumlah(Math.max(1, Math.min(20, Number(e.target.value))))}
+                onChange={(e) => {
+                  const val = Math.max(1, Math.min(40, Number(e.target.value)));
+                  setJumlah(val);
+                }}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-emerald-500 font-semibold"
               />
             </div>
           </div>
 
           {/* Quick presets for question count */}
-          <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-            <span className="text-slate-400 text-[11px]">Pilih Cepat Jumlah:</span>
-            {[1, 3, 5, 10, 15, 20].map((num) => (
-              <button
-                key={num}
-                type="button"
-                onClick={() => setJumlah(num)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
-                  jumlah === num
-                    ? 'bg-emerald-600 text-white font-bold'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
-              >
-                {num} Butir
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-slate-400 text-[11px] mr-1">Pilih Cepat Jumlah:</span>
+              {[5, 10, 15, 20, 25, 30, 35, 40].map((num) => (
+                <button
+                  key={num}
+                  type="button"
+                  onClick={() => {
+                    setJumlah(num);
+                    if (num === 40) {
+                      handleApplyPreset(25, 5, 3, 4, 3);
+                    } else if (num === 20) {
+                      handleApplyPreset(10, 4, 2, 2, 2);
+                    } else if (num === 30) {
+                      handleApplyPreset(20, 4, 0, 3, 3);
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                    jumlah === num
+                      ? 'bg-emerald-600 text-white font-bold shadow-sm'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  {num} Butir
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setUseCustomComposition(prev => !prev)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer border ${
+                useCustomComposition
+                  ? 'bg-indigo-950/80 border-indigo-500/60 text-indigo-300'
+                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Atur Butir per Bentuk Soal</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-indigo-500/30 text-[10px] text-white">
+                {totalFromKomposisi} Butir
+              </span>
+            </button>
           </div>
+
+          {/* Collapsible Panel: Custom Question Distribution per Type */}
+          {useCustomComposition && (
+            <div className="bg-slate-950/80 border border-indigo-500/30 rounded-2xl p-4 sm:p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                <div className="flex items-center space-x-2">
+                  <ListOrdered className="w-4 h-4 text-indigo-400" />
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">
+                    Kisi-kisi Distribusi Butir Soal ({totalFromKomposisi} dari 40 Butir)
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Tentukan kuota persis tiap jenis soal (PG, PGK, MJ, IS, UR)
+                </div>
+              </div>
+
+              {/* 5 Input Counters */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {/* PG */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+                  <span className="text-[11px] font-bold text-slate-300 block mb-1">PG (Pilihan Ganda)</span>
+                  <div className="flex items-center justify-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateKomposisi('PG', (komposisi.PG || 0) - 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center"
+                    >
+                      -
+                    </button>
+                    <span className="text-base font-bold font-mono text-emerald-400 w-8 text-center">
+                      {komposisi.PG}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateKomposisi('PG', (komposisi.PG || 0) + 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block">4 Opsi (A-D)</span>
+                </div>
+
+                {/* PGK */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+                  <span className="text-[11px] font-bold text-slate-300 block mb-1">PGK (Kompleks)</span>
+                  <div className="flex items-center justify-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateKomposisi('PGK', (komposisi.PGK || 0) - 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center"
+                    >
+                      -
+                    </button>
+                    <span className="text-base font-bold font-mono text-indigo-400 w-8 text-center">
+                      {komposisi.PGK}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateKomposisi('PGK', (komposisi.PGK || 0) + 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Multi-Pilihan</span>
+                </div>
+
+                {/* MJ */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+                  <span className="text-[11px] font-bold text-slate-300 block mb-1">MJ (Menjodohkan)</span>
+                  <div className="flex items-center justify-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateKomposisi('MJ', (komposisi.MJ || 0) - 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center"
+                    >
+                      -
+                    </button>
+                    <span className="text-base font-bold font-mono text-teal-400 w-8 text-center">
+                      {komposisi.MJ}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateKomposisi('MJ', (komposisi.MJ || 0) + 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Pasangan Konsep</span>
+                </div>
+
+                {/* IS */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+                  <span className="text-[11px] font-bold text-slate-300 block mb-1">IS (Isian Singkat)</span>
+                  <div className="flex items-center justify-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateKomposisi('IS', (komposisi.IS || 0) - 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center"
+                    >
+                      -
+                    </button>
+                    <span className="text-base font-bold font-mono text-cyan-400 w-8 text-center">
+                      {komposisi.IS}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateKomposisi('IS', (komposisi.IS || 0) + 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Kata Kunci Tepat</span>
+                </div>
+
+                {/* UR */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center col-span-2 sm:col-span-1">
+                  <span className="text-[11px] font-bold text-amber-300 block mb-1">UR (Uraian / Esai)</span>
+                  <div className="flex items-center justify-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateKomposisi('UR', (komposisi.UR || 0) - 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center"
+                    >
+                      -
+                    </button>
+                    <span className="text-base font-bold font-mono text-amber-400 w-8 text-center">
+                      {komposisi.UR}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateKomposisi('UR', (komposisi.UR || 0) + 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-amber-400/80 mt-1 block">Koreksi Manual</span>
+                </div>
+              </div>
+
+              {/* Quick Template Presets */}
+              <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-[11px] text-slate-400 font-semibold">Preset Kisi-kisi Kurikulum:</span>
+                <button
+                  type="button"
+                  onClick={() => handleApplyPreset(25, 5, 3, 4, 3)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition"
+                >
+                  40 Butir Standar ASAS (25 PG, 5 PGK, 3 MJ, 4 IS, 3 UR)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyPreset(40, 0, 0, 0, 0)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition"
+                >
+                  40 Butir Full PG (40 PG)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyPreset(15, 10, 5, 5, 5)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition"
+                >
+                  40 Butir AKM Literasi (15 PG, 10 PGK, 5 MJ, 5 IS, 5 UR)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyPreset(10, 4, 2, 2, 2)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition"
+                >
+                  20 Butir Harian (10 PG, 4 PGK, 2 MJ, 2 IS, 2 UR)
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Action Submit */}
           <div className="pt-3 border-t border-slate-800 flex items-center justify-between">

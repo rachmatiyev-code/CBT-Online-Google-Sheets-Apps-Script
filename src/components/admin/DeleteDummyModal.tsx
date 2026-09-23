@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Trash2, AlertTriangle, CheckCircle2, RotateCcw, X, ShieldAlert, Sparkles } from 'lucide-react';
-import { hapusDataDummy, muatUlangDataContoh } from '../../services/gasService';
+import { Trash2, AlertTriangle, CheckCircle2, RotateCcw, X, ShieldAlert, Sparkles, ShieldCheck } from 'lucide-react';
+import { hapusDataDummy, muatUlangDataContoh, hapusHanyaHasilDummy } from '../../services/gasService';
 
 interface DeleteDummyModalProps {
   isOpen: boolean;
@@ -24,6 +24,7 @@ export const DeleteDummyModal: React.FC<DeleteDummyModalProps> = ({
   const [hapusSoal, setHapusSoal] = useState<boolean>(true);
   const [hapusSiswa, setHapusSiswa] = useState<boolean>(true);
   const [hapusHasil, setHapusHasil] = useState<boolean>(true);
+  const [hasilScope, setHasilScope] = useState<'only_dummy' | 'all'>('only_dummy');
   const [hapusKode, setHapusKode] = useState<boolean>(true);
   const [notification, setNotification] = useState<{ type: 'success' | 'info'; message: string } | null>(null);
 
@@ -37,17 +38,28 @@ export const DeleteDummyModal: React.FC<DeleteDummyModalProps> = ({
   };
 
   const handleExecuteDelete = () => {
+    let hasilDihapusCount = 0;
+    if (hapusHasil) {
+      if (hasilScope === 'only_dummy') {
+        const resDummy = hapusHanyaHasilDummy();
+        hasilDihapusCount = resDummy.jumlahDihapus;
+      } else {
+        const resAll = hapusDataDummy({ hasil: true });
+        hasilDihapusCount = resAll.hasilDihapus;
+      }
+    }
+
     const res = hapusDataDummy({
       soal: hapusSoal,
       siswa: hapusSiswa,
-      hasil: hapusHasil,
+      hasil: false,
       kode_soal: hapusKode,
     });
 
     onDataChanged();
     setNotification({
       type: 'success',
-      message: `Berhasil menghapus: ${res.soalDihapus} butir soal, ${res.siswaDihapus} siswa, ${res.hasilDihapus} hasil ujian, dan ${res.kodeDihapus} kode soal dummy. 9 Mata Pelajaran standar tetap aman.`
+      message: `Berhasil menghapus: ${res.soalDihapus} butir soal, ${res.siswaDihapus} siswa, ${hasilDihapusCount} hasil ujian (${hasilScope === 'only_dummy' ? 'hanya dummy/latihan' : 'semua'}), dan ${res.kodeDihapus} kode soal dummy. 9 Mata Pelajaran standar tetap aman.`
     });
 
     setTimeout(() => {
@@ -180,23 +192,53 @@ export const DeleteDummyModal: React.FC<DeleteDummyModalProps> = ({
             </label>
 
             {/* Checkbox Hasil Ujian */}
-            <label className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60 hover:bg-slate-800 cursor-pointer transition">
-              <div className="flex items-center space-x-3">
-                <input
-                  type="checkbox"
-                  checked={hapusHasil}
-                  onChange={(e) => setHapusHasil(e.target.checked)}
-                  className="w-4 h-4 rounded text-rose-600 bg-slate-900 border-slate-600 focus:ring-rose-500"
-                />
-                <div>
-                  <span className="text-xs font-semibold text-white block">Rekap Hasil Ujian Dummy</span>
-                  <span className="text-[11px] text-slate-400">Nilai & analisis hasil ujian contoh</span>
+            <div className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60 transition space-y-2.5">
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    checked={hapusHasil}
+                    onChange={(e) => setHapusHasil(e.target.checked)}
+                    className="w-4 h-4 rounded text-rose-600 bg-slate-900 border-slate-600 focus:ring-rose-500"
+                  />
+                  <div>
+                    <span className="text-xs font-semibold text-white block">Rekap Hasil Ujian</span>
+                    <span className="text-[11px] text-slate-400">Pembersihan data nilai dan rekap hasil</span>
+                  </div>
                 </div>
-              </div>
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">
-                {countHasil} riwayat
-              </span>
-            </label>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">
+                  {countHasil} riwayat
+                </span>
+              </label>
+
+              {hapusHasil && (
+                <div className="pl-7 pt-1 space-y-1.5 border-t border-slate-700/40">
+                  <label className="flex items-center space-x-2 text-xs cursor-pointer text-slate-300 hover:text-white">
+                    <input
+                      type="radio"
+                      name="modalHasilScope"
+                      checked={hasilScope === 'only_dummy'}
+                      onChange={() => setHasilScope('only_dummy')}
+                      className="text-amber-500 bg-slate-900 border-slate-600"
+                    />
+                    <span className="text-amber-300 font-semibold">Hanya hapus hasil dummy/contoh</span>
+                    <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-800">
+                      Siswa Asli Aman
+                    </span>
+                  </label>
+                  <label className="flex items-center space-x-2 text-xs cursor-pointer text-slate-300 hover:text-white">
+                    <input
+                      type="radio"
+                      name="modalHasilScope"
+                      checked={hasilScope === 'all'}
+                      onChange={() => setHasilScope('all')}
+                      className="text-rose-500 bg-slate-900 border-slate-600"
+                    />
+                    <span>Hapus seluruh hasil ujian (kosongkan total)</span>
+                  </label>
+                </div>
+              )}
+            </div>
 
             {/* Checkbox Kode Soal */}
             <label className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60 hover:bg-slate-800 cursor-pointer transition">

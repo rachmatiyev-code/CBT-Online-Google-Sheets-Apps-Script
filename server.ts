@@ -71,9 +71,22 @@ app.post("/api/validate-gemini-key", async (req, res) => {
 // Gemini question generation endpoint
 app.post("/api/generate-questions", async (req, res) => {
   try {
-    const { topic, promptKustom, tingkat, kelas, idMapel, namaMapel, jumlah, bentukSoal, apiKey } = req.body;
+    const { topic, promptKustom, tingkat, kelas, idMapel, namaMapel, jumlah, bentukSoal, komposisi, apiKey } = req.body;
     const resolvedKey = apiKey || (req.headers["x-gemini-api-key"] as string) || process.env.GEMINI_API_KEY;
     const ai = getGeminiClient(resolvedKey);
+
+    let breakdownInstruction = '';
+    if (komposisi && typeof komposisi === 'object') {
+      const parts: string[] = [];
+      if (Number(komposisi.PG) > 0) parts.push(`${komposisi.PG} butir Pilihan Ganda (PG)`);
+      if (Number(komposisi.PGK) > 0) parts.push(`${komposisi.PGK} butir Pilihan Ganda Kompleks (PGK)`);
+      if (Number(komposisi.MJ) > 0) parts.push(`${komposisi.MJ} butir Menjodohkan (MJ)`);
+      if (Number(komposisi.IS) > 0) parts.push(`${komposisi.IS} butir Isian Singkat (IS)`);
+      if (Number(komposisi.UR) > 0) parts.push(`${komposisi.UR} butir Uraian/Esai (UR)`);
+      if (parts.length > 0) {
+        breakdownInstruction = `- Komposisi Distribusi Bentuk Soal WAJIB TEPAT: ${parts.join(', ')} (Total: ${jumlah || 40} butir).`;
+      }
+    }
 
     const systemPrompt = `Anda adalah asisten kurikulum dan perancang butir soal Computer Based Test (CBT) profesional di Indonesia.
 Buat ${jumlah || 3} butir soal berkualitas tinggi dengan parameter berikut:
@@ -82,7 +95,7 @@ Buat ${jumlah || 3} butir soal berkualitas tinggi dengan parameter berikut:
 - Mata Pelajaran: ${namaMapel || idMapel || 'Umum'} (ID Mapel: ${idMapel || 'MAPEL-01'})
 - Topik / Materi Pembelajaran: ${topic || 'Materi Umum'}
 - Bentuk Soal: ${bentukSoal || 'Campuran'}
-${promptKustom ? `- Instruksi Tambahan / Kisi-kisi / Stimulus: ${promptKustom}` : ''}
+${breakdownInstruction ? `${breakdownInstruction}\n` : ''}${promptKustom ? `- Instruksi Tambahan / Kisi-kisi / Stimulus: ${promptKustom}` : ''}
 
 Peraturan format butir soal:
 1. Jika bentukSoal adalah 'PG': opsi_json berupa array 4 teks pilihan (contoh: ["Pilihan A", "Pilihan B", "Pilihan C", "Pilihan D"]) dan kunci_jawaban_json adalah huruf tunggal "A", "B", "C", atau "D".
@@ -90,7 +103,7 @@ Peraturan format butir soal:
 3. Jika bentukSoal adalah 'MJ': opsi_json adalah objek { "kiri": ["item1", "item2", "item3"], "kanan": ["pasangan1", "pasangan2", "pasangan3"] }, kunci_jawaban_json adalah mapping yang benar { "item1": "pasangan1", "item2": "pasangan2", "item3": "pasangan3" }.
 4. Jika bentukSoal adalah 'IS': opsi_json null, kunci_jawaban_json adalah array string alternatif jawaban yang diterima (contoh: ["9", "sembilan"]).
 5. Jika bentukSoal adalah 'UR': opsi_json null, kunci_jawaban_json berupa string kata kunci jawaban, dan pembahasan memuat rubrik penskoran.
-6. Jika bentukSoal adalah 'Campuran': buat variasi jenis soal (PG, PGK, MJ, IS, UR).
+6. Jika bentukSoal adalah 'Campuran' atau memiliki komposisi kisi-kisi: buat variasi jenis soal sesuai rincian.
 
 Output WAJIB berupa JSON array murni tanpa format markdown codeblock:
 [

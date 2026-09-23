@@ -25,9 +25,13 @@ interface ExamScreenProps {
 export const ExamScreen: React.FC<ExamScreenProps> = ({
   mapel,
   siswa,
-  questions,
+  questions: rawQuestions,
   onSubmitExam,
 }) => {
+  // Filter out any draft questions so students only take active questions
+  const questions = React.useMemo(() => {
+    return rawQuestions.filter(q => !q.is_draft);
+  }, [rawQuestions]);
   // Navigation & Answers State
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [answers, setAnswers] = useState<Record<string, any>>({});

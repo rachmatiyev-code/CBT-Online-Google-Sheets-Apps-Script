@@ -78,8 +78,8 @@ export default function App() {
 
   // Start exam flow
   const handleStartExam = (selectedMapel: MataPelajaran, student: Siswa, enteredToken: string) => {
-    // Filter questions for the selected subject
-    let subjectQuestions = soalList.filter(s => s.id_mapel === selectedMapel.id_mapel);
+    // Filter questions for the selected subject (exclude draft questions)
+    let subjectQuestions = soalList.filter(s => s.id_mapel === selectedMapel.id_mapel && !s.is_draft);
 
     if (selectedMapel.acak_soal) {
       subjectQuestions = [...subjectQuestions].sort(() => Math.random() - 0.5);
