@@ -1,4 +1,4 @@
-import { MataPelajaran, Question, Siswa, HasilUjian, AnalisisItem, RiwayatPaketSoal, DistraktorInfo, KodeSoalPaket, DAFTAR_MATA_PELAJARAN } from '../types';
+import { MataPelajaran, Question, Siswa, HasilUjian, AnalisisItem, RiwayatPaketSoal, DistraktorInfo, KodeSoalPaket, DAFTAR_MATA_PELAJARAN, DatabaseMode, StorageStatus } from '../types';
 import { DEFAULT_MAPEL, DEFAULT_QUESTIONS, DEFAULT_SISWA, DEFAULT_HASIL, DEFAULT_RIWAYAT_PAKET, DEFAULT_KODE_SOAL_PAKET } from '../data/defaultData';
 
 const STORAGE_KEYS = {
@@ -9,6 +9,9 @@ const STORAGE_KEYS = {
   GAS_URL: 'cbt_gas_webapp_url',
   RIWAYAT: 'cbt_sheets_riwayat_paket',
   KODE_SOAL: 'cbt_sheets_kode_soal_paket',
+  DATABASE_MODE: 'cbt_database_mode', // 'simulator' | 'database_penuh'
+  LAST_SYNCED: 'cbt_last_synced_at',
+  LAST_VERIFIED: 'cbt_last_verified_at',
 };
 
 // ============================================================
@@ -120,6 +123,101 @@ function doGet(e) {
       }
 
       response = { status: 'success', mapel: mapelObj, data: listSoal };
+    }
+    else if (action === 'getAllData' || action === 'syncDownload') {
+      var sheetMapel = getOrCreateSheet(ss, 'MataPelajaran', ['id_mapel', 'nama_mapel', 'kelas', 'durasi_menit', 'token_akses', 'status_aktif']);
+      var sheetSoal = getOrCreateSheet(ss, 'BankSoal', ['id_soal', 'id_mapel', 'jenis_soal', 'pertanyaan', 'url_gambar', 'opsi_json', 'kunci_jawaban_json', 'bobot', 'pembahasan']);
+      var sheetSiswa = getOrCreateSheet(ss, 'DataSiswa', ['nisn', 'nama_siswa', 'kelas', 'pin_siswa']);
+      var sheetHasil = getOrCreateSheet(ss, 'HasilUjian', ['id_hasil', 'timestamp', 'nisn', 'nama_siswa', 'kelas', 'id_mapel', 'jawaban_siswa', 'skor_per_soal', 'skor_total', 'total_bobot', 'nilai_akhir', 'status_koreksi', 'pelanggaran_curang', 'durasi_menit']);
+
+      var mapelRows = sheetMapel.getDataRange().getValues();
+      var listMapel = [];
+      for (var i = 1; i < mapelRows.length; i++) {
+        if (mapelRows[i][0]) {
+          listMapel.push({
+            id_mapel: String(mapelRows[i][0]),
+            nama_mapel: String(mapelRows[i][1] || mapelRows[i][0]),
+            kelas: String(mapelRows[i][2] || '5'),
+            durasi_menit: Number(mapelRows[i][3]) || 45,
+            token_akses: String(mapelRows[i][4] || ''),
+            status_aktif: mapelRows[i][5] === true || String(mapelRows[i][5]).toUpperCase() === 'TRUE' || String(mapelRows[i][5]).toUpperCase() === 'AKTIF'
+          });
+        }
+      }
+
+      var soalRows = sheetSoal.getDataRange().getValues();
+      var listSoal = [];
+      for (var s = 1; s < soalRows.length; s++) {
+        if (soalRows[s][0]) {
+          var opsiVal = soalRows[s][5];
+          try { opsiVal = JSON.parse(opsiVal); } catch(e) {}
+          var kunciVal = soalRows[s][6];
+          try { kunciVal = JSON.parse(kunciVal); } catch(e) {}
+          listSoal.push({
+            id_soal: String(soalRows[s][0]),
+            id_mapel: String(soalRows[s][1]),
+            jenis_soal: String(soalRows[s][2] || 'PG'),
+            pertanyaan: String(soalRows[s][3] || ''),
+            url_gambar: String(soalRows[s][4] || ''),
+            opsi_json: opsiVal,
+            kunci_jawaban_json: kunciVal,
+            bobot: Number(soalRows[s][7]) || 1,
+            pembahasan: String(soalRows[s][8] || '')
+          });
+        }
+      }
+
+      var siswaRows = sheetSiswa.getDataRange().getValues();
+      var listSiswa = [];
+      for (var sw = 1; sw < siswaRows.length; sw++) {
+        if (siswaRows[sw][0]) {
+          listSiswa.push({
+            nisn: String(siswaRows[sw][0]),
+            nama_siswa: String(siswaRows[sw][1] || ''),
+            kelas: String(siswaRows[sw][2] || ''),
+            pin_siswa: String(siswaRows[sw][3] || '1234')
+          });
+        }
+      }
+
+      var hasilRows = sheetHasil.getDataRange().getValues();
+      var listHasil = [];
+      for (var h = 1; h < hasilRows.length; h++) {
+        if (hasilRows[h][0]) {
+          var jwb = hasilRows[h][6];
+          try { jwb = JSON.parse(jwb); } catch(e) {}
+          var skr = hasilRows[h][7];
+          try { skr = JSON.parse(skr); } catch(e) {}
+          listHasil.push({
+            id_hasil: String(hasilRows[h][0]),
+            timestamp: String(hasilRows[h][1]),
+            nisn: String(hasilRows[h][2]),
+            nama_siswa: String(hasilRows[h][3] || ''),
+            kelas: String(hasilRows[h][4] || ''),
+            id_mapel: String(hasilRows[h][5] || ''),
+            nama_mapel: String(hasilRows[h][5] || ''),
+            jawaban_siswa: jwb || {},
+            skor_per_soal: skr || {},
+            skor_total: Number(hasilRows[h][8]) || 0,
+            total_bobot: Number(hasilRows[h][9]) || 0,
+            nilai_akhir: Number(hasilRows[h][10]) || 0,
+            status_koreksi: String(hasilRows[h][11] || 'SELESAI'),
+            pelanggaran_curang: Number(hasilRows[h][12]) || 0,
+            durasi_menit: Number(hasilRows[h][13]) || 0
+          });
+        }
+      }
+
+      response = {
+        status: 'success',
+        message: 'Data Google Sheets berhasil disinkronkan!',
+        data: {
+          mapel: listMapel,
+          soal: listSoal,
+          siswa: listSiswa,
+          hasil: listHasil
+        }
+      };
     }
     else {
       response = { status: 'error', message: 'Aksi tidak dikenal.' };
@@ -259,6 +357,90 @@ function doPost(e) {
         nilaiAkhir: hasil.nilaiAkhir,
         skorPerSoal: hasil.skorPerSoal,
         statusKoreksi: hasil.statusKoreksi
+      };
+    } else if (action === 'submitBulkJawaban' || action === 'syncAllResults') {
+      var sheetHasil = getOrCreateSheet(ss, 'HasilUjian', [
+        'id_hasil', 'timestamp', 'nisn', 'nama_siswa', 'kelas', 'id_mapel',
+        'jawaban_siswa', 'skor_per_soal', 'skor_total', 'total_bobot',
+        'nilai_akhir', 'status_koreksi', 'pelanggaran_curang', 'durasi_menit'
+      ]);
+      var resultsList = payload.results || [];
+      var existingData = sheetHasil.getDataRange().getValues();
+      var existingIds = {};
+      for (var ex = 1; ex < existingData.length; ex++) {
+        if (existingData[ex][0]) existingIds[String(existingData[ex][0])] = true;
+      }
+      var countAdded = 0;
+      for (var r = 0; r < resultsList.length; r++) {
+        var h = resultsList[r];
+        if (h && h.id_hasil && !existingIds[String(h.id_hasil)]) {
+          sheetHasil.appendRow([
+            h.id_hasil,
+            h.timestamp || Utilities.formatDate(new Date(), 'GMT+7', 'yyyy-MM-dd HH:mm:ss'),
+            h.nisn,
+            h.nama_siswa || '',
+            h.kelas || '',
+            h.nama_mapel || h.id_mapel || '',
+            typeof h.jawaban_siswa === 'string' ? h.jawaban_siswa : JSON.stringify(h.jawaban_siswa || {}),
+            typeof h.skor_per_soal === 'string' ? h.skor_per_soal : JSON.stringify(h.skor_per_soal || {}),
+            Number(h.skor_total) || 0,
+            Number(h.total_bobot) || 100,
+            Number(h.nilai_akhir) !== undefined ? Number(h.nilai_akhir) : Number(h.skor_total) || 0,
+            h.status_koreksi || 'SELESAI',
+            Number(h.pelanggaran_curang) || 0,
+            Number(h.durasi_menit) || 0
+          ]);
+          existingIds[String(h.id_hasil)] = true;
+          countAdded++;
+        }
+      }
+      response = {
+        status: 'success',
+        message: 'Berhasil menyinkronkan ' + countAdded + ' hasil ujian ke tab HasilUjian Google Sheets!',
+        countAdded: countAdded
+      };
+    } else if (action === 'syncUpload' || action === 'saveAllData') {
+      // Overwrite/update sheets with payload data from frontend
+      if (payload.mapel && Array.isArray(payload.mapel) && payload.mapel.length > 0) {
+        var sheetMapel = getOrCreateSheet(ss, 'MataPelajaran', ['id_mapel', 'nama_mapel', 'kelas', 'durasi_menit', 'token_akses', 'status_aktif']);
+        sheetMapel.clearContents();
+        sheetMapel.appendRow(['id_mapel', 'nama_mapel', 'kelas', 'durasi_menit', 'token_akses', 'status_aktif']);
+        for (var m = 0; m < payload.mapel.length; m++) {
+          var itemM = payload.mapel[m];
+          sheetMapel.appendRow([itemM.id_mapel, itemM.nama_mapel, itemM.kelas, itemM.durasi_menit, itemM.token_akses, itemM.status_aktif]);
+        }
+      }
+      if (payload.soal && Array.isArray(payload.soal) && payload.soal.length > 0) {
+        var sheetSoal = getOrCreateSheet(ss, 'BankSoal', ['id_soal', 'id_mapel', 'jenis_soal', 'pertanyaan', 'url_gambar', 'opsi_json', 'kunci_jawaban_json', 'bobot', 'pembahasan']);
+        sheetSoal.clearContents();
+        sheetSoal.appendRow(['id_soal', 'id_mapel', 'jenis_soal', 'pertanyaan', 'url_gambar', 'opsi_json', 'kunci_jawaban_json', 'bobot', 'pembahasan']);
+        for (var s = 0; s < payload.soal.length; s++) {
+          var itemS = payload.soal[s];
+          sheetSoal.appendRow([
+            itemS.id_soal,
+            itemS.id_mapel,
+            itemS.jenis_soal,
+            itemS.pertanyaan,
+            itemS.url_gambar || '',
+            typeof itemS.opsi_json === 'string' ? itemS.opsi_json : JSON.stringify(itemS.opsi_json || []),
+            typeof itemS.kunci_jawaban_json === 'string' ? itemS.kunci_jawaban_json : JSON.stringify(itemS.kunci_jawaban_json || ''),
+            itemS.bobot || 1,
+            itemS.pembahasan || ''
+          ]);
+        }
+      }
+      if (payload.siswa && Array.isArray(payload.siswa) && payload.siswa.length > 0) {
+        var sheetSiswa = getOrCreateSheet(ss, 'DataSiswa', ['nisn', 'nama_siswa', 'kelas', 'pin_siswa']);
+        sheetSiswa.clearContents();
+        sheetSiswa.appendRow(['nisn', 'nama_siswa', 'kelas', 'pin_siswa']);
+        for (var sw = 0; sw < payload.siswa.length; sw++) {
+          var itemSw = payload.siswa[sw];
+          sheetSiswa.appendRow([itemSw.nisn, itemSw.nama_siswa, itemSw.kelas, itemSw.pin_siswa || '1234']);
+        }
+      }
+      response = {
+        status: 'success',
+        message: 'Data berhasil disinkronkan dan disimpan ke Google Spreadsheet (GDrive)!'
       };
     } else {
       response = { status: 'error', message: 'Aksi POST tidak dikenal.' };
@@ -653,6 +835,347 @@ export function resetDatabaseToDefault(): void {
   localStorage.setItem(STORAGE_KEYS.HASIL, JSON.stringify(DEFAULT_HASIL));
   localStorage.setItem(STORAGE_KEYS.RIWAYAT, JSON.stringify(DEFAULT_RIWAYAT_PAKET));
   localStorage.setItem(STORAGE_KEYS.KODE_SOAL, JSON.stringify(DEFAULT_KODE_SOAL_PAKET));
+}
+
+// Reload default factory sample data (Alias)
+export function muatUlangDataContoh(): void {
+  resetDatabaseToDefault();
+}
+
+// ============================================================
+// DATABASE MODE & STORAGE STATUS HELPERS
+// ============================================================
+export function getDatabaseMode(): DatabaseMode {
+  const mode = localStorage.getItem(STORAGE_KEYS.DATABASE_MODE);
+  if (mode === 'database_penuh') return 'database_penuh';
+  return 'simulator';
+}
+
+export function setDatabaseMode(mode: DatabaseMode): void {
+  localStorage.setItem(STORAGE_KEYS.DATABASE_MODE, mode);
+}
+
+export function getLastSyncedAt(): string | null {
+  return localStorage.getItem(STORAGE_KEYS.LAST_SYNCED);
+}
+
+export function setLastSyncedAt(ts: string): void {
+  localStorage.setItem(STORAGE_KEYS.LAST_SYNCED, ts);
+}
+
+export function getLastVerifiedAt(): string | null {
+  return localStorage.getItem(STORAGE_KEYS.LAST_VERIFIED);
+}
+
+export function setLastVerifiedAt(ts: string): void {
+  localStorage.setItem(STORAGE_KEYS.LAST_VERIFIED, ts);
+}
+
+export function getStorageLocation(): StorageStatus {
+  const mode = getDatabaseMode();
+  const url = getGasWebappUrl();
+  const lastVerified = getLastVerifiedAt();
+  if (mode === 'database_penuh' && url.trim().length > 0 && lastVerified) {
+    return 'gdrive';
+  }
+  return 'lokal';
+}
+
+// Live Connectivity Test (Ping)
+export async function cekKoneksiGas(targetUrl?: string): Promise<{ success: boolean; message: string; latency?: number }> {
+  const url = (targetUrl || getGasWebappUrl()).trim();
+  if (!url) {
+    return { success: false, message: 'URL Google Apps Script belum diisi.' };
+  }
+
+  const start = performance.now();
+  try {
+    const pingUrl = `${url}${url.includes('?') ? '&' : '?'}action=ping&_t=${Date.now()}`;
+    const res = await fetch(pingUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+    const latency = Math.round(performance.now() - start);
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    if (data && data.status === 'success') {
+      const nowStr = new Date().toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'medium' });
+      setLastVerifiedAt(nowStr);
+      return {
+        success: true,
+        message: data.message || 'Koneksi ke Google Apps Script Web App berhasil!',
+        latency,
+      };
+    } else {
+      return {
+        success: false,
+        message: data?.message || 'Apps Script merespon, namun status bukan success.',
+        latency,
+      };
+    }
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.message || 'Gagal tersambung ke Google Apps Script. Pastikan Web App di-deploy dengan izin "Anyone".',
+      latency: Math.round(performance.now() - start),
+    };
+  }
+}
+
+// Pull / Download data from Google Sheets into local web app
+export async function tarikDataDariGoogleSheets(targetUrl?: string): Promise<{
+  success: boolean;
+  message: string;
+  countMapel?: number;
+  countSoal?: number;
+  countSiswa?: number;
+  countHasil?: number;
+}> {
+  const url = (targetUrl || getGasWebappUrl()).trim();
+  if (!url) {
+    return { success: false, message: 'URL Google Apps Script belum diatur.' };
+  }
+
+  try {
+    const fetchUrl = `${url}${url.includes('?') ? '&' : '?'}action=getAllData&_t=${Date.now()}`;
+    const res = await fetch(fetchUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    const json = await res.json();
+    if (json.status !== 'success' || !json.data) {
+      throw new Error(json.message || 'Gagal memuat data dari Spreadsheet.');
+    }
+
+    const { mapel, soal, siswa, hasil } = json.data;
+
+    let cMapel = 0;
+    let cSoal = 0;
+    let cSiswa = 0;
+    let cHasil = 0;
+
+    if (Array.isArray(mapel) && mapel.length > 0) {
+      saveMataPelajaran(mapel);
+      cMapel = mapel.length;
+    }
+    if (Array.isArray(soal) && soal.length > 0) {
+      saveBankSoal(soal);
+      cSoal = soal.length;
+    }
+    if (Array.isArray(siswa) && siswa.length > 0) {
+      saveSiswa(siswa);
+      cSiswa = siswa.length;
+    }
+    if (Array.isArray(hasil) && hasil.length > 0) {
+      saveHasilUjian(hasil);
+      cHasil = hasil.length;
+    }
+
+    const nowStr = new Date().toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'medium' });
+    setLastSyncedAt(nowStr);
+    setLastVerifiedAt(nowStr);
+
+    return {
+      success: true,
+      message: `Sinkronisasi berhasil! Diperoleh ${cMapel} mapel, ${cSoal} soal, ${cSiswa} siswa, dan ${cHasil} hasil ujian dari Google Sheets.`,
+      countMapel: cMapel,
+      countSoal: cSoal,
+      countSiswa: cSiswa,
+      countHasil: cHasil,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.message || 'Gagal menarik data dari Google Sheets. Pastikan skrip Code.gs telah diperbarui dan di-deploy.',
+    };
+  }
+}
+
+// Push / Upload local data to Google Sheets (overwrites/updates sheets)
+export async function unggahDataKeGoogleSheets(targetUrl?: string): Promise<{ success: boolean; message: string }> {
+  const url = (targetUrl || getGasWebappUrl()).trim();
+  if (!url) {
+    return { success: false, message: 'URL Google Apps Script belum diatur.' };
+  }
+
+  const mapel = getMataPelajaran();
+  const soal = getBankSoal();
+  const siswa = getDataSiswa();
+
+  const payload = {
+    action: 'syncUpload',
+    mapel,
+    soal,
+    siswa,
+  };
+
+  try {
+    await fetch(url, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const nowStr = new Date().toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'medium' });
+    setLastSyncedAt(nowStr);
+    setLastVerifiedAt(nowStr);
+
+    return {
+      success: true,
+      message: `Berhasil mengunggah ${soal.length} butir soal, ${mapel.length} mata pelajaran, dan ${siswa.length} data siswa ke Google Spreadsheet (GDrive)!`,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.message || 'Gagal mengunggah data ke Google Sheets.',
+    };
+  }
+}
+
+// Sinkronkan Seluruh Hasil Ujian Lokal ke Google Sheets (Iterasi & Bulk POST ke GAS)
+export async function sinkronSemuaHasilLokalKeGoogleSheets(
+  targetUrl?: string,
+  onProgress?: (current: number, total: number) => void
+): Promise<{ success: boolean; message: string; countSynced: number; totalCount: number }> {
+  const url = (targetUrl || getGasWebappUrl()).trim();
+  if (!url) {
+    return {
+      success: false,
+      message: 'URL Google Apps Script belum diisi. Masukkan URL Web App terlebih dahulu.',
+      countSynced: 0,
+      totalCount: 0,
+    };
+  }
+
+  const results = getHasilUjian();
+  if (!results || results.length === 0) {
+    return {
+      success: true,
+      message: 'Tidak ada data hasil ujian lokal di browser untuk disinkronkan.',
+      countSynced: 0,
+      totalCount: 0,
+    };
+  }
+
+  // 1. Coba bulk POST payload (mengirimkan seluruh paket array hasil sekaligus)
+  try {
+    const bulkPayload = {
+      action: 'submitBulkJawaban',
+      results: results.map((h) => ({
+        id_hasil: h.id_hasil,
+        timestamp: h.timestamp,
+        nisn: h.nisn,
+        nama_siswa: h.nama_siswa,
+        kelas: h.kelas,
+        id_mapel: h.id_mapel,
+        nama_mapel: h.nama_mapel,
+        jawaban_siswa: h.jawaban_siswa,
+        skor_per_soal: h.skor_per_soal,
+        skor_total: h.skor_total,
+        total_bobot: h.total_bobot,
+        nilai_akhir: h.nilai_akhir,
+        status_koreksi: h.status_koreksi,
+        pelanggaran_curang: h.pelanggaran_curang,
+        durasi_menit: h.durasi_menit,
+      })),
+    };
+
+    await fetch(url, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(bulkPayload),
+    });
+  } catch (bulkErr) {
+    console.warn('Percobaan bulk POST menghasilkan catatan:', bulkErr);
+  }
+
+  // 2. Iterasi setiap hasil ujian lokal untuk menjamin pengiriman per baris ke Tab HasilUjian
+  let countSynced = 0;
+  for (let i = 0; i < results.length; i++) {
+    const item = results[i];
+    if (onProgress) {
+      onProgress(i + 1, results.length);
+    }
+    try {
+      await kirimHasilKeGoogleSheets(item, url);
+      countSynced++;
+    } catch (err) {
+      console.error(`Gagal mengirim hasil untuk ${item.nama_siswa}:`, err);
+    }
+    if (i < results.length - 1) {
+      await new Promise((res) => setTimeout(res, 80));
+    }
+  }
+
+  const nowStr = new Date().toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'medium' });
+  setLastSyncedAt(nowStr);
+  setLastVerifiedAt(nowStr);
+
+  return {
+    success: true,
+    message: `Berhasil menyinkronkan ${results.length} hasil ujian lokal ke Google Sheets (Tab HasilUjian)!`,
+    countSynced,
+    totalCount: results.length,
+  };
+}
+
+// Hapus Data Dummy (Membersihkan data placeholder / contoh)
+export function hapusDataDummy(pilihan: {
+  soal?: boolean;
+  siswa?: boolean;
+  hasil?: boolean;
+  kode_soal?: boolean;
+}): {
+  soalDihapus: number;
+  siswaDihapus: number;
+  hasilDihapus: number;
+  kodeDihapus: number;
+} {
+  let soalDihapus = 0;
+  let siswaDihapus = 0;
+  let hasilDihapus = 0;
+  let kodeDihapus = 0;
+
+  if (pilihan.soal) {
+    const currentSoal = getBankSoal();
+    soalDihapus = currentSoal.length;
+    saveBankSoal([]);
+  }
+
+  if (pilihan.siswa) {
+    const currentSiswa = getDataSiswa();
+    siswaDihapus = currentSiswa.length;
+    saveSiswa([]);
+  }
+
+  if (pilihan.hasil) {
+    const currentHasil = getHasilUjian();
+    hasilDihapus = currentHasil.length;
+    saveHasilUjian([]);
+  }
+
+  if (pilihan.kode_soal) {
+    const currentKode = getKodeSoalList();
+    kodeDihapus = currentKode.length;
+    saveKodeSoalList([]);
+  }
+
+  return { soalDihapus, siswaDihapus, hasilDihapus, kodeDihapus };
 }
 
 // ============================================================

@@ -126,3 +126,15 @@ export interface KodeSoalPaket {
 
 export type ViewMode = 'login' | 'ujian' | 'hasil' | 'admin';
 export type AdminTab = 'sheets' | 'kode-soal' | 'analisis' | 'ai-generator' | 'riwayat-soal' | 'share-link' | 'gas-setup' | 'hasil-rekap' | 'api-key';
+
+export type DatabaseMode = 'simulator' | 'database_penuh';
+export type StorageStatus = 'lokal' | 'gdrive';
+
+export interface StorageStatusInfo {
+  mode: DatabaseMode;
+  storageLocation: StorageStatus;
+  gasConnected: boolean;
+  lastVerifiedAt?: string;
+  lastSyncedAt?: string;
+  errorMessage?: string;
+}

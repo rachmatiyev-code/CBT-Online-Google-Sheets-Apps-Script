@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ViewMode } from '../types';
 import { BookOpen, User, ShieldCheck, Database, Maximize2, Minimize2, CheckCircle2 } from 'lucide-react';
+import { StorageStatusButton } from './admin/StorageStatusModal';
 
 interface NavbarProps {
   currentMode: ViewMode;
@@ -9,6 +10,7 @@ interface NavbarProps {
   gasUrl: string;
   studentName?: string;
   mapelName?: string;
+  onOpenStorageModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -18,6 +20,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   gasUrl,
   studentName,
   mapelName,
+  onOpenStorageModal,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
@@ -64,19 +67,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right: Actions & Mode Switcher */}
         <div className="flex items-center space-x-2 sm:space-x-3">
-          {/* Storage / Connection Indicator */}
-          <div 
-            title={gasConnected ? `Terhubung ke Google Apps Script: ${gasUrl}` : 'Menggunakan Engine Database Simulator Google Sheets (Lokal)'}
-            className={`hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${
-              gasConnected 
-                ? 'bg-emerald-950/60 border-emerald-700/60 text-emerald-300' 
-                : 'bg-blue-950/60 border-blue-700/60 text-blue-300'
-            }`}
-          >
-            <Database className="w-3.5 h-3.5" />
-            <span>{gasConnected ? 'GAS Web App Live' : 'Simulator Sheets'}</span>
-            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-          </div>
+          {/* Storage / Connection Indicator Button ("Data tersimpan di gdrive" / "Data tersimpan di lokal") */}
+          <StorageStatusButton
+            onClick={() => {
+              if (onOpenStorageModal) {
+                onOpenStorageModal();
+              } else {
+                onModeChange('admin');
+              }
+            }}
+            className="hidden sm:flex"
+          />
 
           {/* Fullscreen Toggle */}
           <button

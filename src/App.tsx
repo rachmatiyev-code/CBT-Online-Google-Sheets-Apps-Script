@@ -19,9 +19,11 @@ import { StudentLogin } from './components/StudentLogin';
 import { ExamScreen } from './components/ExamScreen';
 import { ExamResultScreen } from './components/ExamResultScreen';
 import { AdminDashboard } from './components/AdminDashboard';
+import { StorageStatusModal } from './components/admin/StorageStatusModal';
 
 export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('login');
+  const [isGlobalStorageModalOpen, setIsGlobalStorageModalOpen] = useState<boolean>(false);
   
   // Database States (lazily initialized from localStorage / defaults on first render)
   const [mapelList, setMapelList] = useState<MataPelajaran[]>(() => getMataPelajaran());
@@ -169,6 +171,7 @@ export default function App() {
         gasUrl={gasUrl}
         studentName={activeSiswa?.nama_siswa}
         mapelName={activeMapel?.nama_mapel}
+        onOpenStorageModal={() => setIsGlobalStorageModalOpen(true)}
       />
 
       {/* Main View Router */}
@@ -214,6 +217,19 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Global Storage & Connectivity Modal */}
+      <StorageStatusModal
+        isOpen={isGlobalStorageModalOpen}
+        onClose={() => setIsGlobalStorageModalOpen(false)}
+        onDataSynced={() => {
+          setMapelList(getMataPelajaran());
+          setSoalList(getBankSoal());
+          setSiswaList(getDataSiswa());
+          setHasilList(getHasilUjian());
+          setGasUrl(getGasWebappUrl());
+        }}
+      />
     </div>
   );
 }

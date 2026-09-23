@@ -9,7 +9,9 @@ import {
   QuestionType,
   RiwayatPaketSoal,
   KodeSoalPaket,
-  DAFTAR_MATA_PELAJARAN
+  DAFTAR_MATA_PELAJARAN,
+  DatabaseMode,
+  StorageStatus
 } from '../types';
 import { 
   hitungAnalisisButirSoal, 
@@ -24,9 +26,18 @@ import {
   tambahKodeSoal,
   updateKodeSoal,
   hapusKodeSoal,
-  kirimHasilKeGoogleSheets
+  kirimHasilKeGoogleSheets,
+  getDatabaseMode,
+  setDatabaseMode,
+  getStorageLocation,
+  getMataPelajaran,
+  getBankSoal,
+  getDataSiswa,
+  getHasilUjian
 } from '../services/gasService';
 import { KodeSoalTab } from './admin/KodeSoalTab';
+import { StorageStatusModal, StorageStatusButton } from './admin/StorageStatusModal';
+import { DeleteDummyModal } from './admin/DeleteDummyModal';
 import { 
   Table, 
   BarChart3, 
@@ -43,6 +54,10 @@ import {
   Download, 
   RotateCcw,
   Search,
+  RefreshCw,
+  Cloud,
+  HardDrive,
+  Database,
   Filter,
   CheckCircle2,
   XCircle,
@@ -101,6 +116,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Kode Soal State
   const [kodeList, setKodeList] = useState<KodeSoalPaket[]>(() => getKodeSoalList());
+
+  // Storage Status & Mode Modal States
+  const [isStorageModalOpen, setIsStorageModalOpen] = useState<boolean>(false);
+  const [isDeleteDummyModalOpen, setIsDeleteDummyModalOpen] = useState<boolean>(false);
+  const [dbMode, setDbMode] = useState<DatabaseMode>(() => getDatabaseMode());
+
+  // Refresh all state from local storage when synced or dummy data deleted
+  const handleDataRefreshed = () => {
+    onUpdateMapel(getMataPelajaran());
+    onUpdateSoal(getBankSoal());
+    onUpdateSiswa(getDataSiswa());
+    onUpdateHasil(getHasilUjian());
+    setKodeList(getKodeSoalList());
+    setHistoryList(getRiwayatPaketSoal());
+    setDbMode(getDatabaseMode());
+  };
+
+  const handleToggleDbMode = (targetMode: DatabaseMode) => {
+    setDbMode(targetMode);
+    setDatabaseMode(targetMode);
+    if (targetMode === 'database_penuh') {
+      setIsStorageModalOpen(true);
+    }
+  };
 
   // Test Kirim Hasil Ujian State (Troubleshooting Google Sheets)
   const [testSendLoading, setTestSendLoading] = useState<boolean>(false);
@@ -548,6 +587,73 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               <Key className="w-3.5 h-3.5 text-amber-300" />
               <span>API Key Gemini</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ============================================================ */}
+        {/* QUICK CONTROL BAR: DATABASE MODE, SYNC, DUMMY & STORAGE STATUS */}
+        {/* ============================================================ */}
+        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {/* Left: Mode Toggle & Current Indicator */}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs text-slate-400 font-medium">Mode Database:</span>
+
+            {/* Mode Selector Toggle */}
+            <div className="flex items-center p-1 bg-slate-950 rounded-2xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => handleToggleDbMode('simulator')}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                  dbMode === 'simulator'
+                    ? 'bg-amber-600 text-white shadow-md shadow-amber-950/40'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+              >
+                <HardDrive className="w-3.5 h-3.5" />
+                <span>Simulator (Lokal)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleToggleDbMode('database_penuh')}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                  dbMode === 'database_penuh'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/40'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+              >
+                <Cloud className="w-3.5 h-3.5" />
+                <span>Database Penuh (GDrive)</span>
+              </button>
+            </div>
+
+            {/* Storage Status Button (Live Indicator) */}
+            <StorageStatusButton onClick={() => setIsStorageModalOpen(true)} />
+          </div>
+
+          {/* Right: Quick Action Buttons (Sync & Delete Dummy) */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Tombol Sinkron Data */}
+            <button
+              type="button"
+              onClick={() => setIsStorageModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-teal-950/80 hover:bg-teal-900/80 border border-teal-500/50 text-teal-300 text-xs font-bold flex items-center space-x-1.5 transition shadow-sm"
+              title="Buka panel sinkronisasi data dua arah antara Web App dan Google Drive"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-teal-400" />
+              <span>Sinkron Data</span>
+            </button>
+
+            {/* Tombol Hapus Data Dummy */}
+            <button
+              type="button"
+              onClick={() => setIsDeleteDummyModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900/80 border border-rose-500/50 text-rose-300 text-xs font-bold flex items-center space-x-1.5 transition shadow-sm"
+              title="Bersihkan data dummy atau data contoh (bank soal, akun siswa, rekap nilai)"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>Hapus Data Dummy</span>
             </button>
           </div>
         </div>
@@ -1278,6 +1384,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         )}
+
+        {/* Modal: Status Penyimpanan, Switch Database Penuh & Sinkronisasi */}
+        <StorageStatusModal
+          isOpen={isStorageModalOpen}
+          onClose={() => {
+            setIsStorageModalOpen(false);
+            setDbMode(getDatabaseMode());
+          }}
+          onDataSynced={handleDataRefreshed}
+        />
+
+        {/* Modal: Hapus Data Dummy / Contoh */}
+        <DeleteDummyModal
+          isOpen={isDeleteDummyModalOpen}
+          onClose={() => setIsDeleteDummyModalOpen(false)}
+          countSoal={soalList.length}
+          countSiswa={siswaList.length}
+          countHasil={hasilList.length}
+          countKode={kodeList.length}
+          onDataChanged={handleDataRefreshed}
+        />
 
       </div>
     </div>
