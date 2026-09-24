@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { MataPelajaran } from '../../types';
+import React, { useState, useMemo } from 'react';
+import { MataPelajaran, Siswa, KodeSoalPaket, DatabaseMode } from '../../types';
 import { 
   Share2, 
   Copy, 
@@ -10,28 +10,53 @@ import {
   QrCode, 
   Users, 
   Sparkles,
-  Info
+  Info,
+  Layers,
+  Database
 } from 'lucide-react';
 
 interface ShareLinkModalProps {
   mapelList: MataPelajaran[];
+  siswaList?: Siswa[];
+  kodeList?: KodeSoalPaket[];
+  dbMode?: DatabaseMode;
+  gasUrl?: string;
   currentMapelId?: string;
   onClose?: () => void;
 }
 
 export const ShareLinkModal: React.FC<ShareLinkModalProps> = ({
   mapelList,
+  siswaList = [],
+  kodeList = [],
+  dbMode = 'simulator',
+  gasUrl = '',
   currentMapelId,
 }) => {
   const [selectedMapelId, setSelectedMapelId] = useState<string>(
     currentMapelId || mapelList[0]?.id_mapel || ''
   );
+  const [selectedKodeId, setSelectedKodeId] = useState<string>('ALL');
   const [includeNisn, setIncludeNisn] = useState<boolean>(false);
-  const [sampleNisn, setSampleNisn] = useState<string>('12345');
+  const [includeGasParam, setIncludeGasParam] = useState<boolean>(Boolean(gasUrl));
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [copiedTemplate, setCopiedTemplate] = useState<boolean>(false);
 
+  // Filter students: in full database mode, strictly exclude dummy records
+  const realStudents = useMemo(() => {
+    if (dbMode === 'database_penuh') {
+      return siswaList.filter(s => !s.is_dummy);
+    }
+    return siswaList;
+  }, [siswaList, dbMode]);
+
+  const [sampleNisn, setSampleNisn] = useState<string>(() => {
+    return realStudents[0]?.nisn || '';
+  });
+
   const selectedMapel = mapelList.find(m => m.id_mapel === selectedMapelId) || mapelList[0];
+  const matchingPackages = kodeList.filter(k => k.id_mapel === selectedMapelId);
+  const activePackage = kodeList.find(k => k.id_kode === selectedKodeId);
 
   // Base URL calculation (safe for iframe preview and standalone window)
   const baseUrl = typeof window !== 'undefined'
@@ -44,27 +69,34 @@ export const ShareLinkModal: React.FC<ShareLinkModalProps> = ({
   if (selectedMapel) {
     queryParams.set('mapel', selectedMapel.id_mapel);
   }
+  if (selectedKodeId && selectedKodeId !== 'ALL') {
+    queryParams.set('kode', selectedKodeId);
+  }
   if (includeNisn && sampleNisn.trim()) {
     queryParams.set('nisn', sampleNisn.trim());
+  }
+  // Include backend URL to ensure student device connects directly to Google Drive/Apps Script without dummy data
+  if (includeGasParam && gasUrl.trim()) {
+    queryParams.set('gas', encodeURIComponent(gasUrl.trim()));
   }
 
   const studentLink = `${baseUrl}?${queryParams.toString()}`;
 
   // Pre-formatted message template for WhatsApp, Google Classroom, and Telegram
   const announcementTemplate = `📢 *PENGUMUMAN UJIAN CBT ONLINE*
-Kepada seluruh siswa yang terhormat, berikut adalah tautan resmi untuk mengikuti ujian:
+Kepada seluruh peserta didik yang terhormat, berikut adalah tautan resmi untuk mengikuti ujian:
 
 📚 *Mata Pelajaran:* ${selectedMapel?.nama_mapel || 'Ujian Sekolah'}
 🏫 *Tingkat/Kelas:* ${selectedMapel?.kelas || 'Semua Kelas'}
-⏱️ *Durasi Waktu:* ${selectedMapel?.durasi_menit || 45} Menit (KKM: ${selectedMapel?.kkm || 75})
-🔑 *Token Ujian:* *${selectedMapel?.token_akses || 'MTK3A'}*
+${activePackage ? `📑 *Paket Soal:* [${activePackage.id_kode}] ${activePackage.nama_kode} (${activePackage.jumlah_soal} Soal)\n` : ''}⏱️ *Durasi Waktu:* ${activePackage?.durasi_menit || selectedMapel?.durasi_menit || 45} Menit (KKM: ${selectedMapel?.kkm || 75})
+🔑 *Token Ujian:* *${activePackage?.token_akses || selectedMapel?.token_akses || 'MTK3A'}*
 
 🔗 *Link Portal Ujian Siswa:*
 ${studentLink}
 
 ⚠️ *Petunjuk Pengerjaan:*
 1. Buka tautan di atas menggunakan Google Chrome pada HP / Laptop.
-2. Masukkan NISN dan PIN peserta yang tercantum di kartu ujian Anda.
+2. Masukkan NISN dan PIN peserta resmi Anda.
 3. Masukkan Token Ujian di atas untuk membuka lembar soal.
 4. Jangan keluar dari aplikasi atau membuka tab lain selama ujian berlangsung.
 Selamat mengerjakan dengan jujur dan teliti!`;
@@ -135,7 +167,10 @@ Selamat mengerjakan dengan jujur dan teliti!`;
               </label>
               <select
                 value={selectedMapelId}
-                onChange={(e) => setSelectedMapelId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedMapelId(e.target.value);
+                  setSelectedKodeId('ALL');
+                }}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:ring-2 focus:ring-emerald-500 outline-none"
               >
                 {mapelList.map((m) => (
@@ -146,19 +181,93 @@ Selamat mengerjakan dengan jujur dan teliti!`;
               </select>
             </div>
 
+            {/* Select Paket Soal if available */}
+            {matchingPackages.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Paket Soal Diujikan</span>
+                  </span>
+                  <span className="text-[10px] text-indigo-300 font-mono">Tersedia {matchingPackages.length} Paket</span>
+                </label>
+                <select
+                  value={selectedKodeId}
+                  onChange={(e) => setSelectedKodeId(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                >
+                  <option value="ALL">Semua Soal Bank Mata Pelajaran</option>
+                  {matchingPackages.map((pkg) => (
+                    <option key={pkg.id_kode} value={pkg.id_kode}>
+                      [{pkg.id_kode}] {pkg.nama_kode} ({pkg.jumlah_soal} Soal) • Token: {pkg.token_akses}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Siswa Selector (Exclude Dummy Data) */}
+            <div className="pt-1">
+              <label className="flex items-center space-x-2 cursor-pointer text-xs text-slate-300 mb-2">
+                <input
+                  type="checkbox"
+                  checked={includeNisn}
+                  onChange={(e) => setIncludeNisn(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-500 focus:ring-emerald-500"
+                />
+                <span>Sertakan NISN Spesifik Siswa dalam Tautan (Opsional)</span>
+              </label>
+
+              {includeNisn && (
+                <div className="space-y-2 pl-6">
+                  {realStudents.length > 0 ? (
+                    <select
+                      value={sampleNisn}
+                      onChange={(e) => setSampleNisn(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                    >
+                      {realStudents.map((s) => (
+                        <option key={s.nisn} value={s.nisn}>
+                          {s.nisn} - {s.nama_siswa} ({s.kelas})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={sampleNisn}
+                      onChange={(e) => setSampleNisn(e.target.value)}
+                      placeholder="Ketik NISN Siswa..."
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  )}
+                  <p className="text-[11px] text-slate-400">
+                    {dbMode === 'database_penuh' 
+                      ? '✓ Data dummy disaring otomatis. Hanya siswa ril database yang dapat dipilih.' 
+                      : 'Tip: Biarkan tidak dicentang agar link dapat dipakai oleh seluruh siswa satu kelas.'}
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Subject Status Card */}
             {selectedMapel && (
               <div className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-slate-200">{selectedMapel.nama_mapel}</p>
                   <p className="text-[11px] text-slate-400">
-                    Kelas: {selectedMapel.kelas} • Durasi: {selectedMapel.durasi_menit} Menit • KKM: {selectedMapel.kkm}
+                    Kelas: {selectedMapel.kelas} • Durasi: {activePackage?.durasi_menit || selectedMapel.durasi_menit} Menit • KKM: {selectedMapel.kkm}
                   </p>
+                  {activePackage && (
+                    <p className="text-[11px] text-indigo-400 mt-0.5">
+                      Paket Aktif: [{activePackage.id_kode}] {activePackage.nama_kode}
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] text-slate-400 block mb-0.5">Token Akses:</span>
+                  <span className="text-[10px] text-slate-400 block mb-0.5">Token Ujian:</span>
                   <span className="px-2.5 py-1 rounded-md bg-emerald-500/20 text-emerald-300 font-mono font-bold text-xs border border-emerald-500/30">
-                    {selectedMapel.token_akses}
+                    {activePackage?.token_akses || selectedMapel.token_akses}
                   </span>
                 </div>
               </div>

@@ -42,6 +42,7 @@ export interface MataPelajaran {
   tampilkan_pembahasan: boolean;
   anti_curang: boolean;
   maks_pelanggaran: number;
+  kode_soal_aktif?: string; // ID paket soal yang diujikan (atau 'ALL' untuk semua soal bank)
 }
 
 export interface Siswa {
@@ -49,6 +50,7 @@ export interface Siswa {
   nama_siswa: string;
   kelas: string;
   pin_siswa: string;
+  is_dummy?: boolean;
 }
 
 export interface KomposisiBentukSoal {

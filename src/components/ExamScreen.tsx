@@ -14,6 +14,7 @@ import {
   ShieldAlert,
   ListFilter
 } from 'lucide-react';
+import { cleanQuestionText } from '../utils/textUtils';
 
 interface ExamScreenProps {
   mapel: MataPelajaran;
@@ -294,7 +295,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
 
             {/* Question Text */}
             <div className="text-base sm:text-lg text-slate-100 font-medium leading-relaxed mb-8">
-              {currentQuestion.pertanyaan}
+              {cleanQuestionText(currentQuestion.pertanyaan)}
             </div>
 
             {/* Interactive Inputs according to Question Type */}

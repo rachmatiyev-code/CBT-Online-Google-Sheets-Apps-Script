@@ -383,14 +383,14 @@ export const DEFAULT_QUESTIONS: Question[] = [
 ];
 
 export const DEFAULT_SISWA: Siswa[] = [
-  { nisn: '12345', nama_siswa: 'Ahmad Faiz Pratama', kelas: '3-A', pin_siswa: '1122' },
-  { nisn: '12346', nama_siswa: 'Budi Santoso', kelas: '3-A', pin_siswa: '3344' },
-  { nisn: '12347', nama_siswa: 'Citra Dewi Lestari', kelas: '3-A', pin_siswa: '5566' },
-  { nisn: '12348', nama_siswa: 'Dimas Anggara', kelas: '3-A', pin_siswa: '7788' },
-  { nisn: '12349', nama_siswa: 'Eka Putri Rahayu', kelas: '3-A', pin_siswa: '9900' },
-  { nisn: '12350', nama_siswa: 'Fajar Nugroho', kelas: '3-A', pin_siswa: '1234' },
-  { nisn: '12351', nama_siswa: 'Gita Nurhaliza', kelas: '3-A', pin_siswa: '2345' },
-  { nisn: '12352', nama_siswa: 'Hadi Prasetyo', kelas: '3-A', pin_siswa: '3456' },
+  { nisn: '12345', nama_siswa: 'Ahmad Faiz Pratama', kelas: '3-A', pin_siswa: '1122', is_dummy: true },
+  { nisn: '12346', nama_siswa: 'Budi Santoso', kelas: '3-A', pin_siswa: '3344', is_dummy: true },
+  { nisn: '12347', nama_siswa: 'Citra Dewi Lestari', kelas: '3-A', pin_siswa: '5566', is_dummy: true },
+  { nisn: '12348', nama_siswa: 'Dimas Anggara', kelas: '3-A', pin_siswa: '7788', is_dummy: true },
+  { nisn: '12349', nama_siswa: 'Eka Putri Rahayu', kelas: '3-A', pin_siswa: '9900', is_dummy: true },
+  { nisn: '12350', nama_siswa: 'Fajar Nugroho', kelas: '3-A', pin_siswa: '1234', is_dummy: true },
+  { nisn: '12351', nama_siswa: 'Gita Nurhaliza', kelas: '3-A', pin_siswa: '2345', is_dummy: true },
+  { nisn: '12352', nama_siswa: 'Hadi Prasetyo', kelas: '3-A', pin_siswa: '3456', is_dummy: true },
 ];
 
 export const DEFAULT_HASIL: HasilUjian[] = [

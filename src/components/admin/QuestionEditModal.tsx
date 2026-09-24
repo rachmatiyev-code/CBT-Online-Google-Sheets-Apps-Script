@@ -20,6 +20,7 @@ import {
   FileText
 } from 'lucide-react';
 import { compressImageFile, formatBytes } from '../../utils/imageUtils';
+import { cleanQuestionText } from '../../utils/textUtils';
 
 interface QuestionEditModalProps {
   isOpen: boolean;
@@ -350,7 +351,7 @@ export const QuestionEditModal: React.FC<QuestionEditModalProps> = ({
       id_mapel: idMapel.trim(),
       kode_soal: kodeSoal.trim().toUpperCase() || undefined,
       jenis_soal: jenisSoal,
-      pertanyaan: pertanyaan.trim() || '(Draft Soal Tanpa Pertanyaan)',
+      pertanyaan: cleanQuestionText(pertanyaan.trim()) || (saveAsDraft ? '(Draft Soal Tanpa Pertanyaan)' : ''),
       url_gambar: urlGambar.trim() || undefined,
       opsi_json: finalOpsiJson,
       kunci_jawaban_json: finalKunciJson,

@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { getStoredGeminiKey, getGeminiServerStatus } from '../../services/geminiKeyService';
 
+import { cleanQuestionText } from '../../utils/textUtils';
+
 interface AiGeneratorTabProps {
   mapelList: MataPelajaran[];
   onAddQuestions: (newQuestions: Question[]) => void;
@@ -166,6 +168,7 @@ Peraturan format butir soal:
 4. Jika bentukSoal adalah 'IS': opsi_json null, kunci_jawaban_json adalah array string alternatif jawaban yang diterima (contoh: ["9", "sembilan"]).
 5. Jika bentukSoal adalah 'UR': opsi_json null, kunci_jawaban_json berupa string kata kunci jawaban, dan pembahasan memuat rubrik penskoran.
 6. Jika bentukSoal adalah 'Campuran': buat variasi jenis soal (PG, PGK, MJ, IS, UR).
+7. SANGAT PENTING: DILARANG menuliskan awalan atau label seperti "[SD / MI Kelas 5] Nomor 1...", "terkait materi...", "Seorang peserta didik mempelajari...", "Materi Pokok: ...", atau "Tujuan Pembelajaran: ...". Mulailah langsung dengan kalimat pertanyaan atau stimulus kasus kontekstual murni tanpa basa-basi kurikulum/silabus.
 
 Balas HANYA JSON array valid murni:
 [
@@ -246,7 +249,7 @@ Balas HANYA JSON array valid murni:
               id_soal: qId,
               id_mapel: idMapel,
               jenis_soal: 'PG',
-              pertanyaan: `[${tingkat} ${kelas}] Nomor ${qNum} terkait materi "${topic}": Seorang peserta didik mempelajari ${topic.toLowerCase()} dengan nilai awal ${12 * mult}. Jika nilai tersebut dibagi rata ke dalam ${3 * mult} bagian yang sama besar, berapakah hasil yang diperoleh?`,
+              pertanyaan: `Jika sebuah nilai sebesar ${12 * mult} dibagi rata ke dalam ${3 * mult} bagian yang sama besar, berapakah hasil yang diperoleh pada masing-masing bagian?`,
               opsi_json: [
                 `${2 * mult} bagian`,
                 `4 bagian`,
@@ -262,7 +265,7 @@ Balas HANYA JSON array valid murni:
               id_soal: qId,
               id_mapel: idMapel,
               jenis_soal: 'PGK',
-              pertanyaan: `[${tingkat} ${kelas}] Nomor ${qNum} (AKM Literasi) materi "${topic}": Manakah dari pernyataan-pernyataan di bawah ini yang bernilai BENAR? (Pilih semua opsi yang tepat)`,
+              pertanyaan: `Terkait materi ${topic}, manakah dari pernyataan-pernyataan di bawah ini yang bernilai BENAR? (Pilih semua opsi yang tepat)`,
               opsi_json: [
                 `Pernyataan 1: Konsep ${topic.toLowerCase()} dapat diterapkan pada perhitungan proporsional.`,
                 `Pernyataan 2: Bentuk paling sederhana dapat dicari menggunakan faktor persekutuan terbesar.`,
@@ -282,7 +285,7 @@ Balas HANYA JSON array valid murni:
               id_soal: qId,
               id_mapel: idMapel,
               jenis_soal: 'IS',
-              pertanyaan: `[${tingkat} ${kelas}] Nomor ${qNum} (Isian): Pada materi "${topic}", nilai pecahan yang senilai dengan 2/4 dalam bentuk desimal adalah...`,
+              pertanyaan: `Nilai pecahan yang senilai dengan 2/4 dalam bentuk desimal adalah...`,
               kunci_jawaban_json: ['0.5', '0,5', '1/2', 'setengah'],
               bobot: 1,
               pembahasan: 'Bentuk desimal dari 2/4 adalah 0,5 (atau 0.5).',
@@ -292,7 +295,7 @@ Balas HANYA JSON array valid murni:
               id_soal: qId,
               id_mapel: idMapel,
               jenis_soal: 'MJ',
-              pertanyaan: `[${tingkat} ${kelas}] Nomor ${qNum} (Menjodohkan): Pasangkan konsep ${topic} pada kolom kiri dengan padanan yang tepat pada kolom kanan:`,
+              pertanyaan: `Pasangkan konsep ${topic} pada kolom kiri dengan padanan yang tepat pada kolom kanan:`,
               opsi_json: {
                 kiri: ['Pecahan 1/4', 'Pecahan 2/4', 'Pecahan 3/4'],
                 kanan: ['0.25', '0.50', '0.75'],
@@ -311,7 +314,7 @@ Balas HANYA JSON array valid murni:
               id_soal: qId,
               id_mapel: idMapel,
               jenis_soal: 'UR',
-              pertanyaan: `[${tingkat} ${kelas}] Nomor ${qNum} (Uraian): Uraikan secara jelas langkah-langkah penyelesaian masalah kontekstual pada topik "${topic}", dan berikan satu contoh penerapannya dalam kehidupan sehari-hari!`,
+              pertanyaan: `Uraikan secara jelas langkah-langkah penyelesaian masalah kontekstual pada topik "${topic}", dan berikan satu contoh penerapannya dalam kehidupan sehari-hari!`,
               kunci_jawaban_json: 'Memuat identifikasi masalah, tahapan solusi runtut, dan contoh kehidupan nyata yang relevan.',
               bobot: 3,
               pembahasan: 'Rubrik Penskoran: Skor 3 jika identifikasi, langkah, dan contoh lengkap; skor 2 jika langkah benar tanpa contoh lengkap; skor 1 jika hanya memuat gagasan umum.',
@@ -319,6 +322,12 @@ Balas HANYA JSON array valid murni:
           }
         }
       }
+
+      // Sanitize all questions to strip any preamble or syllabus labels
+      generatedList = generatedList.map(q => ({
+        ...q,
+        pertanyaan: cleanQuestionText(q.pertanyaan)
+      }));
 
       // 3. Save to active Bank Soal
       onAddQuestions(generatedList);

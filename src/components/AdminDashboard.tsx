@@ -38,6 +38,7 @@ import {
 import { KodeSoalTab } from './admin/KodeSoalTab';
 import { StorageStatusModal, StorageStatusButton } from './admin/StorageStatusModal';
 import { DeleteDummyModal } from './admin/DeleteDummyModal';
+import { cleanQuestionText } from '../utils/textUtils';
 import { 
   Table, 
   BarChart3, 
@@ -79,7 +80,8 @@ import {
   FileText,
   Layers,
   ClipboardCheck,
-  ArrowRight
+  ArrowRight,
+  FolderPlus
 } from 'lucide-react';
 import { EnhancedItemAnalysis } from './admin/EnhancedItemAnalysis';
 import { AiGeneratorTab } from './admin/AiGeneratorTab';
@@ -312,6 +314,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const updated = mapelList.map(m => {
       if (m.id_mapel === id) {
         return { ...m, status_aktif: !m.status_aktif };
+      }
+      return m;
+    });
+    onUpdateMapel(updated);
+  };
+
+  // Handle select active question package for MataPelajaran
+  const handleSelectKodeSoalForMapel = (idMapel: string, kodeId: string) => {
+    const updated = mapelList.map((m) => {
+      if (m.id_mapel === idMapel) {
+        const pkg = kodeList.find(k => k.id_kode === kodeId);
+        return {
+          ...m,
+          kode_soal_aktif: kodeId,
+          token_akses: pkg?.token_akses ? pkg.token_akses : m.token_akses,
+          durasi_menit: pkg?.durasi_menit ? pkg.durasi_menit : m.durasi_menit
+        };
       }
       return m;
     });
@@ -940,54 +959,166 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* TAB CONTENT: TAB MATAPELAJARAN */}
             {activeSheetTab === 'MataPelajaran' && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="bg-slate-950 text-slate-400 uppercase font-mono tracking-wider border-b border-slate-800">
-                    <tr>
-                      <th className="p-3">id_mapel</th>
-                      <th className="p-3">nama_mapel</th>
-                      <th className="p-3">kelas</th>
-                      <th className="p-3">durasi_menit</th>
-                      <th className="p-3">token_akses</th>
-                      <th className="p-3">KKM</th>
-                      <th className="p-3">status_aktif</th>
-                      <th className="p-3 text-right">Aksi Sakelar</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 font-mono">
-                    {mapelList.map((m) => (
-                      <tr key={m.id_mapel} className="hover:bg-slate-800/40">
-                        <td className="p-3 font-bold text-white">{m.id_mapel}</td>
-                        <td className="p-3 font-sans font-medium text-slate-200">{m.nama_mapel}</td>
-                        <td className="p-3">{m.kelas}</td>
-                        <td className="p-3">{m.durasi_menit} Menit</td>
-                        <td className="p-3 text-amber-400 font-bold">{m.token_akses}</td>
-                        <td className="p-3">{m.kkm}</td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            m.status_aktif 
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                              : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                          }`}>
-                            {m.status_aktif ? 'AKTIF (DIBUKA)' : 'NONAKTIF (DITUTUP)'}
+              <div className="space-y-4">
+                {/* PANEL PEMILIHAN PAKET SOAL YANG DIUJIKAN */}
+                <div className="p-4 sm:p-5 bg-gradient-to-r from-indigo-950/40 via-slate-900/60 to-slate-900/40 border-b border-indigo-900/30 rounded-t-2xl">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0">
+                        <Layers className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                          Panel Pemilihan Paket Soal yang Diujikan
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
+                            Fitur Baru
                           </span>
-                        </td>
-                        <td className="p-3 text-right font-sans">
-                          <button
-                            onClick={() => handleToggleMapelStatus(m.id_mapel)}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                              m.status_aktif
-                                ? 'bg-rose-950/70 text-rose-300 border border-rose-800 hover:bg-rose-900'
-                                : 'bg-emerald-950/70 text-emerald-300 border border-emerald-800 hover:bg-emerald-900'
-                            }`}
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          Tentukan paket soal spesifik yang akan dikerjakan siswa saat login ujian per mata pelajaran.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('kode-soal')}
+                      className="self-start sm:self-auto px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center space-x-1.5 transition shadow-lg shadow-indigo-900/30"
+                    >
+                      <FolderPlus className="w-3.5 h-3.5" />
+                      <span>Kelola / Buat Paket Baru di Tab Kode Soal</span>
+                    </button>
+                  </div>
+
+                  {/* Grid cards for active packages per subject */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {mapelList.map((m) => {
+                      const matchingPkgs = kodeList.filter(k => k.id_mapel === m.id_mapel);
+                      const activePkg = kodeList.find(k => k.id_kode === m.kode_soal_aktif);
+                      const mapelSoalCount = soalList.filter(s => s.id_mapel === m.id_mapel && !s.is_draft).length;
+                      const currentActiveKode = m.kode_soal_aktif || 'ALL';
+
+                      return (
+                        <div 
+                          key={m.id_mapel}
+                          className={`p-3.5 rounded-2xl border transition ${
+                            currentActiveKode !== 'ALL'
+                              ? 'bg-slate-900/90 border-indigo-500/40 shadow-md shadow-indigo-950/20'
+                              : 'bg-slate-900/50 border-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-slate-200">{m.nama_mapel}</span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+                              {m.kelas}
+                            </span>
+                          </div>
+
+                          <label className="text-[11px] text-slate-400 block mb-1">Paket Soal Diujikan:</label>
+                          <select
+                            value={currentActiveKode}
+                            onChange={(e) => handleSelectKodeSoalForMapel(m.id_mapel, e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition"
                           >
-                            {m.status_aktif ? 'Tutup Ujian' : 'Buka Ujian'}
-                          </button>
-                        </td>
+                            <option value="ALL">Semua Soal di Bank Soal ({mapelSoalCount} Soal)</option>
+                            {matchingPkgs.map((pkg) => (
+                              <option key={pkg.id_kode} value={pkg.id_kode}>
+                                [{pkg.id_kode}] {pkg.nama_kode} ({pkg.jumlah_soal} Soal)
+                              </option>
+                            ))}
+                            {matchingPkgs.length === 0 && kodeList.map((pkg) => (
+                              <option key={pkg.id_kode} value={pkg.id_kode}>
+                                [{pkg.id_kode}] {pkg.nama_kode} ({pkg.jumlah_soal} Soal)
+                              </option>
+                            ))}
+                          </select>
+
+                          <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2">
+                            <span>Status Ujian:</span>
+                            <span className={`font-semibold ${m.status_aktif ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {m.status_aktif ? 'Sedang Dibuka' : 'Ditutup'}
+                            </span>
+                          </div>
+                          {currentActiveKode !== 'ALL' && activePkg && (
+                            <div className="mt-1 text-[10px] text-indigo-300 font-mono flex items-center justify-between">
+                              <span>Token Paket: <strong className="text-amber-300">{activePkg.token_akses}</strong></span>
+                              <span>Durasi: {activePkg.durasi_menit}m</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950 text-slate-400 uppercase font-mono tracking-wider border-b border-slate-800">
+                      <tr>
+                        <th className="p-3">id_mapel</th>
+                        <th className="p-3">nama_mapel</th>
+                        <th className="p-3">kelas</th>
+                        <th className="p-3">Paket Diujikan</th>
+                        <th className="p-3">durasi_menit</th>
+                        <th className="p-3">token_akses</th>
+                        <th className="p-3">KKM</th>
+                        <th className="p-3">status_aktif</th>
+                        <th className="p-3 text-right">Aksi Sakelar</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                      {mapelList.map((m) => {
+                        const matchingPkgs = kodeList.filter(k => k.id_mapel === m.id_mapel);
+                        const availablePkgs = matchingPkgs.length > 0 ? matchingPkgs : kodeList;
+                        const totalMapelSoal = soalList.filter(s => s.id_mapel === m.id_mapel && !s.is_draft).length;
+
+                        return (
+                          <tr key={m.id_mapel} className="hover:bg-slate-800/40">
+                            <td className="p-3 font-bold text-white">{m.id_mapel}</td>
+                            <td className="p-3 font-sans font-medium text-slate-200">{m.nama_mapel}</td>
+                            <td className="p-3">{m.kelas}</td>
+                            <td className="p-3 font-sans">
+                              <select
+                                value={m.kode_soal_aktif || 'ALL'}
+                                onChange={(e) => handleSelectKodeSoalForMapel(m.id_mapel, e.target.value)}
+                                className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-indigo-500 max-w-[170px] truncate"
+                              >
+                                <option value="ALL">Semua ({totalMapelSoal} Soal)</option>
+                                {availablePkgs.map((pkg) => (
+                                  <option key={pkg.id_kode} value={pkg.id_kode}>
+                                    [{pkg.id_kode}] {pkg.nama_kode} ({pkg.jumlah_soal} Soal)
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="p-3">{m.durasi_menit} Menit</td>
+                            <td className="p-3 text-amber-400 font-bold">{m.token_akses}</td>
+                            <td className="p-3">{m.kkm}</td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                m.status_aktif 
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                              }`}>
+                                {m.status_aktif ? 'AKTIF (DIBUKA)' : 'NONAKTIF (DITUTUP)'}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right font-sans">
+                              <button
+                                onClick={() => handleToggleMapelStatus(m.id_mapel)}
+                                className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                                  m.status_aktif
+                                    ? 'bg-rose-950/70 text-rose-300 border border-rose-800 hover:bg-rose-900'
+                                    : 'bg-emerald-950/70 text-emerald-300 border border-emerald-800 hover:bg-emerald-900'
+                                }`}
+                              >
+                                {m.status_aktif ? 'Tutup Ujian' : 'Buka Ujian'}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -1140,8 +1271,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <span className="text-[10px] text-slate-600 font-sans">-</span>
                             )}
                           </td>
-                          <td className="p-3 font-sans max-w-xs truncate text-slate-200" title={s.pertanyaan}>
-                            {s.pertanyaan}
+                          <td className="p-3 font-sans max-w-xs truncate text-slate-200" title={cleanQuestionText(s.pertanyaan)}>
+                            {cleanQuestionText(s.pertanyaan)}
                           </td>
                           <td className="p-3 text-slate-400 max-w-xs truncate" title={JSON.stringify(s.opsi_json)}>
                             {s.opsi_json ? JSON.stringify(s.opsi_json) : '-'}
@@ -1496,6 +1627,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="max-w-4xl mx-auto">
             <ShareLinkModal
               mapelList={mapelList}
+              siswaList={siswaList}
+              kodeList={kodeList}
+              dbMode={dbMode}
+              gasUrl={gasUrlInput}
               currentMapelId={selectedMapelFilter === 'all' ? mapelList[0]?.id_mapel : selectedMapelFilter}
             />
           </div>

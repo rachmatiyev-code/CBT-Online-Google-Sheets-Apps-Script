@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { MataPelajaran, Siswa, Question } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { MataPelajaran, Siswa, Question, DatabaseMode } from '../types';
+import { getKodeSoalList } from '../services/gasService';
 import { 
   KeyRound, 
   Clock, 
@@ -10,13 +11,15 @@ import {
   ShieldAlert, 
   ArrowRight,
   Sparkles,
-  Info
+  Info,
+  Layers
 } from 'lucide-react';
 
 interface StudentLoginProps {
   mapelList: MataPelajaran[];
   soalList: Question[];
   siswaList: Siswa[];
+  dbMode?: DatabaseMode;
   onStartExam: (selectedMapel: MataPelajaran, student: Siswa, enteredToken: string) => void;
 }
 
@@ -24,11 +27,23 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
   mapelList,
   soalList,
   siswaList,
+  dbMode = 'simulator',
   onStartExam,
 }) => {
+  // Filter student list: if full database mode (GDrive) is active, strictly exclude dummy records
+  const filteredSiswaList = useMemo(() => {
+    if (dbMode === 'database_penuh') {
+      const real = siswaList.filter(s => !s.is_dummy);
+      return real.length > 0 ? real : siswaList.filter(s => !s.is_dummy);
+    }
+    return siswaList;
+  }, [siswaList, dbMode]);
+
   const [selectedMapelId, setSelectedMapelId] = useState<string>(mapelList[0]?.id_mapel || '');
-  const [selectedNisn, setSelectedNisn] = useState<string>(siswaList[0]?.nisn || '');
-  const [enteredPin, setEnteredPin] = useState<string>('1122');
+  const [selectedKodeSoal, setSelectedKodeSoal] = useState<string>('');
+  const [selectedNisn, setSelectedNisn] = useState<string>(() => filteredSiswaList[0]?.nisn || '');
+  const [manualNisn, setManualNisn] = useState<string>('');
+  const [enteredPin, setEnteredPin] = useState<string>('');
   const [enteredToken, setEnteredToken] = useState<string>('');
   const [agreedToRules, setAgreedToRules] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -41,16 +56,22 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
       const qMapel = params.get('mapel');
       const qNisn = params.get('nisn');
       const qMode = params.get('mode');
+      const qKode = params.get('kode');
 
-      if (qMode === 'siswa' || qMapel || qNisn) {
+      if (qMode === 'siswa' || qMapel || qNisn || qKode) {
         setIsFromSharedLink(true);
+      }
+
+      if (qKode) {
+        setSelectedKodeSoal(qKode);
       }
 
       if (qMapel && mapelList.some(m => m.id_mapel === qMapel)) {
         setSelectedMapelId(qMapel);
       }
       if (qNisn) {
-        const matched = siswaList.find(s => s.nisn === qNisn);
+        setManualNisn(qNisn);
+        const matched = filteredSiswaList.find(s => s.nisn === qNisn);
         if (matched) {
           setSelectedNisn(matched.nisn);
           setEnteredPin(matched.pin_siswa);
@@ -59,7 +80,7 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
         }
       }
     }
-  }, [mapelList, siswaList]);
+  }, [mapelList, filteredSiswaList]);
 
   useEffect(() => {
     if (!selectedMapelId && mapelList.length > 0) {
@@ -68,18 +89,41 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
   }, [mapelList, selectedMapelId]);
 
   useEffect(() => {
-    if (!selectedNisn && siswaList.length > 0) {
-      setSelectedNisn(siswaList[0].nisn);
-      setEnteredPin(siswaList[0].pin_siswa);
+    if (!selectedNisn && filteredSiswaList.length > 0) {
+      setSelectedNisn(filteredSiswaList[0].nisn);
+      if (dbMode === 'simulator') {
+        setEnteredPin(filteredSiswaList[0].pin_siswa);
+      }
     }
-  }, [siswaList, selectedNisn]);
+  }, [filteredSiswaList, selectedNisn, dbMode]);
 
   const currentMapel = mapelList.find(m => m.id_mapel === selectedMapelId);
-  const currentSiswa = siswaList.find(s => s.nisn === selectedNisn);
-  const countSoal = soalList.filter(s => s.id_mapel === selectedMapelId).length;
+  const currentSiswa = filteredSiswaList.find(s => s.nisn === (selectedNisn || manualNisn));
+
+  // Determine active exam package if any
+  const allPackages = useMemo(() => getKodeSoalList(), []);
+  const activePackage = useMemo(() => {
+    const pkgId = selectedKodeSoal || currentMapel?.kode_soal_aktif;
+    if (pkgId && pkgId !== 'ALL') {
+      return allPackages.find(p => p.id_kode === pkgId);
+    }
+    return null;
+  }, [selectedKodeSoal, currentMapel?.kode_soal_aktif, allPackages]);
+
+  // Question count depends on package or subject bank
+  const countSoal = useMemo(() => {
+    if (activePackage) {
+      return activePackage.jumlah_soal;
+    }
+    return soalList.filter(s => s.id_mapel === selectedMapelId && !s.is_draft).length;
+  }, [activePackage, soalList, selectedMapelId]);
+
+  // Expected token
+  const expectedToken = activePackage?.token_akses || currentMapel?.token_akses || '';
 
   const handleQuickStudentSelect = (siswa: Siswa) => {
     setSelectedNisn(siswa.nisn);
+    setManualNisn(siswa.nisn);
     setEnteredPin(siswa.pin_siswa);
   };
 
@@ -92,29 +136,41 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
       return;
     }
 
-    // 1. Check if exam is ACTIVE (as specified in Gemini prompt transcript)
+    // 1. Check if exam is ACTIVE
     if (!currentMapel.status_aktif) {
       setErrorMessage(
-        `Ujian "${currentMapel.nama_mapel}" saat ini statusnya NONAKTIF / ditutup oleh Guru di Google Sheets. Hubungi guru pengawas untuk mengaktifkan status di Tab MataPelajaran!`
+        `Ujian "${currentMapel.nama_mapel}" saat ini statusnya NONAKTIF / ditutup oleh Guru. Hubungi guru pengawas untuk mengaktifkan status ujian!`
       );
       return;
     }
 
     // 2. Validate Student NISN & PIN
-    if (!currentSiswa) {
-      setErrorMessage('Data siswa dengan NISN tersebut tidak terdaftar.');
+    const finalNisn = (selectedNisn || manualNisn).trim();
+    if (!finalNisn) {
+      setErrorMessage('Silakan pilih atau masukkan NISN Anda.');
       return;
     }
 
-    if (enteredPin.trim() !== currentSiswa.pin_siswa.trim()) {
-      setErrorMessage('PIN Siswa salah! Silakan periksa kembali kartu ujian Anda.');
-      return;
+    let studentToUse = currentSiswa;
+    if (!studentToUse) {
+      // If student is entering credentials directly
+      studentToUse = {
+        nisn: finalNisn,
+        nama_siswa: `Siswa (${finalNisn})`,
+        kelas: currentMapel.kelas || '5',
+        pin_siswa: enteredPin.trim()
+      };
+    } else {
+      if (enteredPin.trim() !== studentToUse.pin_siswa.trim()) {
+        setErrorMessage('PIN Siswa salah! Silakan periksa kembali kartu ujian Anda.');
+        return;
+      }
     }
 
     // 3. Validate Token
-    if (enteredToken.trim().toUpperCase() !== currentMapel.token_akses.trim().toUpperCase()) {
+    if (expectedToken && enteredToken.trim().toUpperCase() !== expectedToken.trim().toUpperCase()) {
       setErrorMessage(
-        `Token Ujian tidak valid untuk ${currentMapel.nama_mapel}. (Petunjuk simulasi token: ${currentMapel.token_akses})`
+        `Token Ujian tidak valid. (Petunjuk token ujian: ${expectedToken})`
       );
       return;
     }
@@ -126,11 +182,19 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
     }
 
     if (countSoal === 0) {
-      setErrorMessage('Belum ada soal pada mata pelajaran ini di Bank Soal Google Sheets.');
+      setErrorMessage('Belum ada butir soal yang siap dikerjakan pada ujian ini.');
       return;
     }
 
-    onStartExam(currentMapel, currentSiswa, enteredToken.trim().toUpperCase());
+    // Pass mapel with active package attached
+    const finalMapel: MataPelajaran = {
+      ...currentMapel,
+      kode_soal_aktif: activePackage ? activePackage.id_kode : currentMapel.kode_soal_aktif,
+      durasi_menit: activePackage?.durasi_menit || currentMapel.durasi_menit,
+      token_akses: expectedToken
+    };
+
+    onStartExam(finalMapel, studentToUse, enteredToken.trim().toUpperCase());
   };
 
   return (
@@ -183,32 +247,34 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
             </div>
           </div>
 
-          {/* Quick Demo Helper: Student Selector */}
-          <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
-                <Info className="w-3.5 h-3.5 text-blue-400" />
-                <span>Akun Siswa Demo (Klik Cepat):</span>
-              </span>
+          {/* Quick Demo Helper: Only show in simulator mode when not accessed from a live shared student link */}
+          {dbMode === 'simulator' && !isFromSharedLink && filteredSiswaList.length > 0 && (
+            <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+                  <Info className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Akun Siswa Demo (Klik Cepat):</span>
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {filteredSiswaList.slice(0, 4).map((s) => (
+                  <button
+                    key={s.nisn}
+                    type="button"
+                    onClick={() => handleQuickStudentSelect(s)}
+                    className={`text-left p-2 rounded-lg border text-xs transition ${
+                      selectedNisn === s.nisn
+                        ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300'
+                        : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    <p className="font-medium truncate">{s.nama_siswa}</p>
+                    <p className="text-[10px] text-slate-400">NISN: {s.nisn} • PIN: {s.pin_siswa}</p>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              {siswaList.slice(0, 4).map((s) => (
-                <button
-                  key={s.nisn}
-                  type="button"
-                  onClick={() => handleQuickStudentSelect(s)}
-                  className={`text-left p-2 rounded-lg border text-xs transition ${
-                    selectedNisn === s.nisn
-                      ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300'
-                      : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  <p className="font-medium truncate">{s.nama_siswa}</p>
-                  <p className="text-[10px] text-slate-400">NISN: {s.nisn} • PIN: {s.pin_siswa}</p>
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Right Column: Interactive Login Form */}
@@ -225,7 +291,7 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
               <Sparkles className="w-5 h-5 shrink-0 text-emerald-400 mt-0.5" />
               <div>
                 <strong className="text-white block">Tautan Khusus Siswa Terdeteksi</strong>
-                <span>Mata pelajaran <strong>{currentMapel?.nama_mapel}</strong> telah otomatis dipilih. Silakan periksa NISN & PIN lalu masukkan Token Ujian untuk mulai.</span>
+                <span>Mata pelajaran <strong>{currentMapel?.nama_mapel}</strong> telah otomatis dipilih. Silakan masukkan NISN & PIN resmi Anda lalu ketikkan Token Ujian untuk mulai.</span>
               </div>
             </div>
           )}
@@ -259,9 +325,15 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
               {/* Subject Meta Badges */}
               {currentMapel && (
                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  {activePackage && (
+                    <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md bg-indigo-950/70 text-indigo-300 border border-indigo-700/60">
+                      <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Paket: [{activePackage.id_kode}] {activePackage.nama_kode}</span>
+                    </span>
+                  )}
                   <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
                     <Clock className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Durasi: {currentMapel.durasi_menit} Menit</span>
+                    <span>Durasi: {activePackage?.durasi_menit || currentMapel.durasi_menit} Menit</span>
                   </span>
                   <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
                     <HelpCircle className="w-3.5 h-3.5 text-blue-400" />
@@ -288,22 +360,38 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                   NISN / Nomor Peserta
                 </label>
-                <select
-                  id="select-siswa-nisn"
-                  value={selectedNisn}
-                  onChange={(e) => {
-                    const found = siswaList.find(s => s.nisn === e.target.value);
-                    setSelectedNisn(e.target.value);
-                    if (found) setEnteredPin(found.pin_siswa);
-                  }}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
-                >
-                  {siswaList.map((s) => (
-                    <option key={s.nisn} value={s.nisn}>
-                      {s.nisn} - {s.nama_siswa} ({s.kelas})
-                    </option>
-                  ))}
-                </select>
+                {filteredSiswaList.length > 0 ? (
+                  <select
+                    id="select-siswa-nisn"
+                    value={selectedNisn}
+                    onChange={(e) => {
+                      const found = filteredSiswaList.find(s => s.nisn === e.target.value);
+                      setSelectedNisn(e.target.value);
+                      setManualNisn(e.target.value);
+                      if (found && dbMode === 'simulator') setEnteredPin(found.pin_siswa);
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
+                  >
+                    {filteredSiswaList.map((s) => (
+                      <option key={s.nisn} value={s.nisn}>
+                        {s.nisn} - {s.nama_siswa} ({s.kelas})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="input-siswa-nisn"
+                    type="text"
+                    value={manualNisn}
+                    onChange={(e) => {
+                      setManualNisn(e.target.value);
+                      setSelectedNisn(e.target.value);
+                    }}
+                    placeholder="Masukkan NISN Siswa..."
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition font-mono"
+                    required
+                  />
+                )}
               </div>
 
               <div>
@@ -315,7 +403,7 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
                   type="password"
                   value={enteredPin}
                   onChange={(e) => setEnteredPin(e.target.value)}
-                  placeholder="Contoh: 1122"
+                  placeholder="Ketik PIN Anda..."
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition tracking-widest font-mono"
                   required
                 />
@@ -329,13 +417,13 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
                   <KeyRound className="w-3.5 h-3.5 text-amber-400" />
                   <span>Token Ujian</span>
                 </label>
-                {currentMapel && (
+                {expectedToken && (
                   <button
                     type="button"
-                    onClick={() => setEnteredToken(currentMapel.token_akses)}
+                    onClick={() => setEnteredToken(expectedToken)}
                     className="text-xs text-emerald-400 hover:text-emerald-300 underline underline-offset-2"
                   >
-                    Salin Token Ujian: {currentMapel.token_akses}
+                    Salin Token Ujian: {expectedToken}
                   </button>
                 )}
               </div>

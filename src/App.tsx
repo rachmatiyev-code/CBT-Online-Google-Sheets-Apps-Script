@@ -12,6 +12,10 @@ import {
   resetDatabaseToDefault,
   hitungSkorOtomatis,
   getGasWebappUrl,
+  setGasWebappUrl,
+  getDatabaseMode,
+  setDatabaseMode,
+  tarikDataDariGoogleSheets,
   kirimHasilKeGoogleSheets
 } from './services/gasService';
 import { Navbar } from './components/Navbar';
@@ -38,13 +42,47 @@ export default function App() {
   const [activeQuestions, setActiveQuestions] = useState<Question[]>([]);
   const [latestHasil, setLatestHasil] = useState<HasilUjian | null>(null);
 
-  // Initialize data on mount
+  // Initialize data on mount and check URL parameters
   useEffect(() => {
     setMapelList(getMataPelajaran());
     setSoalList(getBankSoal());
     setSiswaList(getDataSiswa());
     setHasilList(getHasilUjian());
     setGasUrl(getGasWebappUrl());
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const qGas = params.get('gas');
+      const qMode = params.get('mode');
+
+      if (qGas) {
+        try {
+          const decoded = decodeURIComponent(qGas);
+          if (decoded.startsWith('http')) {
+            setGasWebappUrl(decoded);
+            setDatabaseMode('database_penuh');
+            setGasUrl(decoded);
+            // Fetch live backend data from Drive/Sheets so student device has real data
+            tarikDataDariGoogleSheets(decoded).then((res) => {
+              if (res.success) {
+                setMapelList(getMataPelajaran());
+                setSoalList(getBankSoal());
+                setSiswaList(getDataSiswa());
+                setHasilList(getHasilUjian());
+              }
+            }).catch(console.error);
+          }
+        } catch (e) {
+          console.error('Error decoding gas param:', e);
+        }
+      }
+
+      if (qMode === 'siswa') {
+        setViewMode('login');
+      } else if (qMode === 'admin') {
+        setViewMode('admin');
+      }
+    }
   }, []);
 
   // Sync state helpers
@@ -78,8 +116,17 @@ export default function App() {
 
   // Start exam flow
   const handleStartExam = (selectedMapel: MataPelajaran, student: Siswa, enteredToken: string) => {
-    // Filter questions for the selected subject (exclude draft questions)
+    // Check if a specific package is selected
     let subjectQuestions = soalList.filter(s => s.id_mapel === selectedMapel.id_mapel && !s.is_draft);
+
+    if (selectedMapel.kode_soal_aktif && selectedMapel.kode_soal_aktif !== 'ALL') {
+      const packageQuestions = soalList.filter(
+        s => s.kode_soal === selectedMapel.kode_soal_aktif && !s.is_draft
+      );
+      if (packageQuestions.length > 0) {
+        subjectQuestions = packageQuestions;
+      }
+    }
 
     if (selectedMapel.acak_soal) {
       subjectQuestions = [...subjectQuestions].sort(() => Math.random() - 0.5);
@@ -181,6 +228,7 @@ export default function App() {
             mapelList={mapelList}
             soalList={soalList}
             siswaList={siswaList}
+            dbMode={getDatabaseMode()}
             onStartExam={handleStartExam}
           />
         )}

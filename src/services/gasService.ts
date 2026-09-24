@@ -19,25 +19,95 @@ const STORAGE_KEYS = {
 // ============================================================
 export const GAS_CODE_GS = `/**
  * ==============================================================================
- * CBT ONLINE BERBASIS GOOGLE SHEETS & GOOGLE APPS SCRIPT (TANPA FIREBASE/GCP)
+ * CBT ONLINE BERBASIS GOOGLE DRIVE (.JSON) & GOOGLE SHEETS HASIL UJIAN
  * ==============================================================================
+ * Arsitektur Penyimpanan:
+ * 1. Google Drive: Folder otomatis "CBT Online" dengan 3 subfolder:
+ *    - /soal/  : Menyimpan file soal.json (dan mapel.json)
+ *    - /siswa/ : Menyimpan file siswa.json
+ *    - /hasil/ : Menyimpan file hasil.json dan arsip hasil_<id>.json
+ * 2. Google Spreadsheet:
+ *    - HANYA mencatat Hasil Ujian siswa (Tab Sheet: "HasilUjian").
+ *    - Data Soal dan Siswa TIDAK dicatat di Spreadsheet, tersimpan aman di Google Drive (.json).
+ *
  * Petunjuk Instalasi:
- * 1. Buat Spreadsheet baru di Google Sheets.
- * 2. Buat 4 Tab/Sheet dengan nama persis:
- *    - "MataPelajaran"
- *    - "BankSoal"
- *    - "DataSiswa"
- *    - "HasilUjian"
+ * 1. Buka Google Sheets Anda (atau buat baru).
+ * 2. Buat satu Sheet/Tab dengan nama "HasilUjian" (atau biarkan dibuat otomatis).
  * 3. Buka menu Extensions > Apps Script.
- * 4. Hapus semua kode default, lalu Tempel (Paste) seluruh kode di bawah ini.
- * 5. (Opsional AI) Di Project Settings > Script Properties, tambahkan "GEMINI_API_KEY".
- * 6. Klik "Deploy" > "New deployment" > Pilih type "Web app".
- *    - Description: CBT Online Backend v1
+ * 4. Tempel (Paste) seluruh kode di bawah ini.
+ * 5. Klik "Deploy" > "New deployment" > Pilih type "Web app".
  *    - Execute as: Me (email Anda)
- *    - Who has access: Anyone (Siapa saja, bahkan anonim)
- * 7. Salin URL Web App yang didapat, lalu tempelkan ke Pengaturan CBT Web App Anda!
+ *    - Who has access: Anyone (Siapa saja, bahkan tanpa akun Google)
+ * 6. Salin URL Web App yang didapat, lalu tempelkan ke menu Pengaturan CBT Online!
  */
 
+// ============================================================
+// HELPER: GOOGLE DRIVE "CBT Online" FOLDER & 3 SUBFOLDER
+// ============================================================
+function getCbtDriveFolders() {
+  var rootName = "CBT Online";
+  var it = DriveApp.getFoldersByName(rootName);
+  var root = it.hasNext() ? it.next() : DriveApp.createFolder(rootName);
+
+  var getSub = function(parent, name) {
+    var sit = parent.getFoldersByName(name);
+    return sit.hasNext() ? sit.next() : parent.createFolder(name);
+  };
+
+  return {
+    root: root,
+    soal: getSub(root, "soal"),
+    siswa: getSub(root, "siswa"),
+    hasil: getSub(root, "hasil")
+  };
+}
+
+function saveDriveJson(folder, filename, dataObj) {
+  var it = folder.getFilesByName(filename);
+  var content = JSON.stringify(dataObj, null, 2);
+  if (it.hasNext()) {
+    var file = it.next();
+    file.setContent(content);
+    return file;
+  } else {
+    return folder.createFile(filename, content, MimeType.PLAIN_TEXT);
+  }
+}
+
+function readDriveJson(folder, filename) {
+  var it = folder.getFilesByName(filename);
+  if (it.hasNext()) {
+    var file = it.next();
+    try {
+      return JSON.parse(file.getBlob().getDataAsString());
+    } catch(e) {
+      return null;
+    }
+  }
+  return null;
+}
+
+// ============================================================
+// SPREADSHEET HELPER (Hanya untuk Tab HasilUjian)
+// ============================================================
+function getOrCreateSheet(ss, targetName, defaultHeaders) {
+  var sheets = ss.getSheets();
+  var normalizedTarget = targetName.toLowerCase().replace(/[\\s_-]/g, '');
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].getName().toLowerCase().replace(/[\\s_-]/g, '') === normalizedTarget) {
+      return sheets[i];
+    }
+  }
+  var newSheet = ss.insertSheet(targetName);
+  if (defaultHeaders && defaultHeaders.length > 0) {
+    newSheet.appendRow(defaultHeaders);
+  }
+  return newSheet;
+}
+
+// ============================================================
+// DOGET: BACA DATA DARI GOOGLE DRIVE (.JSON) & SPREADSHEET HASIL
+// ============================================================
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || 'ping';
   var idMapel = e && e.parameter && e.parameter.id_mapel;
@@ -47,138 +117,103 @@ function doGet(e) {
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var folders = getCbtDriveFolders();
 
     if (action === 'ping') {
-      response = { status: 'success', message: 'Google Apps Script CBT Backend Online!', time: new Date() };
+      response = { 
+        status: 'success', 
+        message: 'Google Apps Script CBT Backend Online! Folder "CBT Online" (soal, siswa, hasil) siap.',
+        time: new Date() 
+      };
     } 
     else if (action === 'getMapel') {
-      var sheetMapel = ss.getSheetByName('MataPelajaran');
-      var data = sheetMapel.getDataRange().getValues();
-      var headers = data[0];
-      var listMapel = [];
-      for (var i = 1; i < data.length; i++) {
-        var row = data[i];
-        if (row[0]) {
-          listMapel.push({
-            id_mapel: row[0],
-            nama_mapel: row[1],
-            kelas: row[2],
-            durasi_menit: Number(row[3]) || 45,
-            token_akses: String(row[4]),
-            status_aktif: row[5] === true || String(row[5]).toUpperCase() === 'TRUE' || String(row[5]).toUpperCase() === 'AKTIF'
-          });
+      var mapelJson = readDriveJson(folders.soal, 'mapel.json');
+      var listMapel = mapelJson || [];
+
+      // Fallback ke sheet jika file JSON belum ada
+      if (listMapel.length === 0) {
+        var sheetMapel = ss.getSheetByName('MataPelajaran');
+        if (sheetMapel) {
+          var data = sheetMapel.getDataRange().getValues();
+          for (var i = 1; i < data.length; i++) {
+            if (data[i][0]) {
+              listMapel.push({
+                id_mapel: String(data[i][0]),
+                nama_mapel: String(data[i][1] || data[i][0]),
+                kelas: String(data[i][2] || 'Semua Kelas'),
+                durasi_menit: Number(data[i][3]) || 45,
+                token_akses: String(data[i][4] || ''),
+                status_aktif: data[i][5] === true || String(data[i][5]).toUpperCase() === 'TRUE' || String(data[i][5]).toUpperCase() === 'AKTIF'
+              });
+            }
+          }
         }
       }
       response = { status: 'success', data: listMapel };
     }
     else if (action === 'getSoal') {
-      var sheetMapel = ss.getSheetByName('MataPelajaran');
-      var mapelData = sheetMapel.getDataRange().getValues();
-      var mapelObj = null;
-
-      for (var m = 1; m < mapelData.length; m++) {
-        if (mapelData[m][0] === idMapel) {
-          mapelObj = {
-            id: mapelData[m][0],
-            nama: mapelData[m][1],
-            token: String(mapelData[m][4]),
-            aktif: mapelData[m][5] === true || String(mapelData[m][5]).toUpperCase() === 'TRUE' || String(mapelData[m][5]).toUpperCase() === 'AKTIF'
-          };
-          break;
+      // Baca soal langsung dari Google Drive subfolder /soal/soal.json
+      var allSoal = readDriveJson(folders.soal, 'soal.json') || [];
+      
+      // Fallback ke sheet jika Drive belum disinkron
+      if (allSoal.length === 0) {
+        var sheetSoal = ss.getSheetByName('BankSoal');
+        if (sheetSoal) {
+          var soalData = sheetSoal.getDataRange().getValues();
+          for (var s = 1; s < soalData.length; s++) {
+            var r = soalData[s];
+            if (r[0]) {
+              var opsi = null;
+              if (r[5]) { try { opsi = JSON.parse(r[5]); } catch(err) { opsi = r[5]; } }
+              allSoal.push({
+                id_soal: String(r[0]),
+                id_mapel: String(r[1]),
+                jenis_soal: String(r[2] || 'PG'),
+                pertanyaan: String(r[3] || ''),
+                url_gambar: String(r[4] || ''),
+                opsi_json: opsi,
+                bobot: Number(r[7]) || 1
+              });
+            }
+          }
         }
       }
 
-      if (!mapelObj) {
-        throw new Error('Mata pelajaran tidak ditemukan.');
-      }
-      if (!mapelObj.aktif) {
-        throw new Error('Ujian untuk mata pelajaran ini saat ini NONAKTIF atau belum dibuka oleh guru.');
-      }
-      if (token && mapelObj.token && token.trim().toUpperCase() !== mapelObj.token.trim().toUpperCase()) {
-        throw new Error('Token ujian tidak cocok.');
-      }
-
-      var sheetSoal = ss.getSheetByName('BankSoal');
-      var soalData = sheetSoal.getDataRange().getValues();
       var listSoal = [];
-
-      for (var s = 1; s < soalData.length; s++) {
-        var r = soalData[s];
-        if (r[1] === idMapel) {
-          var opsi = null;
-          if (r[5]) {
-            try { opsi = JSON.parse(r[5]); } catch(err) { opsi = r[5]; }
-          }
-          // Catatan: Kunci Jawaban sengaja TIDAK dikirimkan ke frontend demi keamanan ujian!
+      for (var j = 0; j < allSoal.length; j++) {
+        var item = allSoal[j];
+        if (!idMapel || item.id_mapel === idMapel || String(item.id_mapel).toLowerCase() === String(idMapel).toLowerCase()) {
+          // Kunci Jawaban sengaja TIDAK dikirimkan ke frontend portal siswa demi keamanan ujian
           listSoal.push({
-            id_soal: r[0],
-            id_mapel: r[1],
-            jenis_soal: r[2],
-            pertanyaan: r[3],
-            url_gambar: r[4] || '',
-            opsi_json: opsi,
-            bobot: Number(r[7]) || 1
+            id_soal: item.id_soal,
+            id_mapel: item.id_mapel,
+            jenis_soal: item.jenis_soal,
+            pertanyaan: item.pertanyaan,
+            url_gambar: item.url_gambar || '',
+            opsi_json: item.opsi_json,
+            bobot: Number(item.bobot) || 1
           });
         }
       }
 
-      response = { status: 'success', mapel: mapelObj, data: listSoal };
+      response = { status: 'success', data: listSoal };
     }
     else if (action === 'getAllData' || action === 'syncDownload') {
-      var sheetMapel = getOrCreateSheet(ss, 'MataPelajaran', ['id_mapel', 'nama_mapel', 'kelas', 'durasi_menit', 'token_akses', 'status_aktif']);
-      var sheetSoal = getOrCreateSheet(ss, 'BankSoal', ['id_soal', 'id_mapel', 'jenis_soal', 'pertanyaan', 'url_gambar', 'opsi_json', 'kunci_jawaban_json', 'bobot', 'pembahasan']);
-      var sheetSiswa = getOrCreateSheet(ss, 'DataSiswa', ['nisn', 'nama_siswa', 'kelas', 'pin_siswa']);
-      var sheetHasil = getOrCreateSheet(ss, 'HasilUjian', ['id_hasil', 'timestamp', 'nisn', 'nama_siswa', 'kelas', 'id_mapel', 'jawaban_siswa', 'skor_per_soal', 'skor_total', 'total_bobot', 'nilai_akhir', 'status_koreksi', 'pelanggaran_curang', 'durasi_menit']);
+      // 1. Ambil Mata Pelajaran dari Google Drive /soal/mapel.json
+      var listMapel = readDriveJson(folders.soal, 'mapel.json') || [];
 
-      var mapelRows = sheetMapel.getDataRange().getValues();
-      var listMapel = [];
-      for (var i = 1; i < mapelRows.length; i++) {
-        if (mapelRows[i][0]) {
-          listMapel.push({
-            id_mapel: String(mapelRows[i][0]),
-            nama_mapel: String(mapelRows[i][1] || mapelRows[i][0]),
-            kelas: String(mapelRows[i][2] || '5'),
-            durasi_menit: Number(mapelRows[i][3]) || 45,
-            token_akses: String(mapelRows[i][4] || ''),
-            status_aktif: mapelRows[i][5] === true || String(mapelRows[i][5]).toUpperCase() === 'TRUE' || String(mapelRows[i][5]).toUpperCase() === 'AKTIF'
-          });
-        }
-      }
+      // 2. Ambil Bank Soal dari Google Drive /soal/soal.json
+      var listSoal = readDriveJson(folders.soal, 'soal.json') || [];
 
-      var soalRows = sheetSoal.getDataRange().getValues();
-      var listSoal = [];
-      for (var s = 1; s < soalRows.length; s++) {
-        if (soalRows[s][0]) {
-          var opsiVal = soalRows[s][5];
-          try { opsiVal = JSON.parse(opsiVal); } catch(e) {}
-          var kunciVal = soalRows[s][6];
-          try { kunciVal = JSON.parse(kunciVal); } catch(e) {}
-          listSoal.push({
-            id_soal: String(soalRows[s][0]),
-            id_mapel: String(soalRows[s][1]),
-            jenis_soal: String(soalRows[s][2] || 'PG'),
-            pertanyaan: String(soalRows[s][3] || ''),
-            url_gambar: String(soalRows[s][4] || ''),
-            opsi_json: opsiVal,
-            kunci_jawaban_json: kunciVal,
-            bobot: Number(soalRows[s][7]) || 1,
-            pembahasan: String(soalRows[s][8] || '')
-          });
-        }
-      }
+      // 3. Ambil Data Siswa dari Google Drive /siswa/siswa.json
+      var listSiswa = readDriveJson(folders.siswa, 'siswa.json') || [];
 
-      var siswaRows = sheetSiswa.getDataRange().getValues();
-      var listSiswa = [];
-      for (var sw = 1; sw < siswaRows.length; sw++) {
-        if (siswaRows[sw][0]) {
-          listSiswa.push({
-            nisn: String(siswaRows[sw][0]),
-            nama_siswa: String(siswaRows[sw][1] || ''),
-            kelas: String(siswaRows[sw][2] || ''),
-            pin_siswa: String(siswaRows[sw][3] || '1234')
-          });
-        }
-      }
+      // 4. Ambil Hasil Ujian dari Google Spreadsheet Sheet "HasilUjian"
+      var sheetHasil = getOrCreateSheet(ss, 'HasilUjian', [
+        'id_hasil', 'timestamp', 'nisn', 'nama_siswa', 'kelas', 'id_mapel',
+        'jawaban_siswa', 'skor_per_soal', 'skor_total', 'total_bobot',
+        'nilai_akhir', 'status_koreksi', 'pelanggaran_curang', 'durasi_menit'
+      ]);
 
       var hasilRows = sheetHasil.getDataRange().getValues();
       var listHasil = [];
@@ -210,7 +245,7 @@ function doGet(e) {
 
       response = {
         status: 'success',
-        message: 'Data Google Sheets berhasil disinkronkan!',
+        message: 'Data CBT Online berhasil diambil (Soal & Siswa dari GDrive .json, Hasil Ujian dari Spreadsheet)!',
         data: {
           mapel: listMapel,
           soal: listSoal,
@@ -230,22 +265,9 @@ function doGet(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function getOrCreateSheet(ss, targetName, defaultHeaders) {
-  var sheets = ss.getSheets();
-  var normalizedTarget = targetName.toLowerCase().replace(/[\s_-]/g, '');
-  for (var i = 0; i < sheets.length; i++) {
-    if (sheets[i].getName().toLowerCase().replace(/[\s_-]/g, '') === normalizedTarget) {
-      return sheets[i];
-    }
-  }
-  // Auto create sheet if missing
-  var newSheet = ss.insertSheet(targetName);
-  if (defaultHeaders && defaultHeaders.length > 0) {
-    newSheet.appendRow(defaultHeaders);
-  }
-  return newSheet;
-}
-
+// ============================================================
+// DOPOST: SIMPAN HASIL KE SPREADSHEET & SOAL/SISWA KE GDRIVE JSON
+// ============================================================
 function doPost(e) {
   var response = {};
 
@@ -263,7 +285,12 @@ function doPost(e) {
 
     var action = payload.action || 'submitJawaban';
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var folders = getCbtDriveFolders();
 
+    // ------------------------------------------------------------
+    // AKSI 1: SUBMIT JAWABAN / HASIL UJIAN SISWA
+    // Dicatat di Spreadsheet tab "HasilUjian" & arsip JSON di GDrive
+    // ------------------------------------------------------------
     if (action === 'submitJawaban' || action === 'simpanHasil') {
       var idMapel = payload.id_mapel || payload.nama_mapel || 'Ujian';
       var nisn = String(payload.nisn || '');
@@ -273,50 +300,24 @@ function doPost(e) {
       var durasiMenit = Number(payload.durasi_menit) || 0;
       var pelanggaran = Number(payload.pelanggaran_curang) || 0;
 
-      // 1. Dapatkan atau buat otomatis Tab HasilUjian jika belum ada / salah penamaan
       var sheetHasil = getOrCreateSheet(ss, 'HasilUjian', [
-        'id_hasil',
-        'timestamp',
-        'nisn',
-        'nama_siswa',
-        'kelas',
-        'id_mapel',
-        'jawaban_siswa',
-        'skor_per_soal',
-        'skor_total',
-        'total_bobot',
-        'nilai_akhir',
-        'status_koreksi',
-        'pelanggaran_curang',
-        'durasi_menit'
+        'id_hasil', 'timestamp', 'nisn', 'nama_siswa', 'kelas', 'id_mapel',
+        'jawaban_siswa', 'skor_per_soal', 'skor_total', 'total_bobot',
+        'nilai_akhir', 'status_koreksi', 'pelanggaran_curang', 'durasi_menit'
       ]);
 
-      // 2. Ambil Bank Soal dari Spreadsheet jika ada
-      var sheetSoal = getOrCreateSheet(ss, 'BankSoal', []);
-      var bankSoal = [];
-      if (sheetSoal.getLastRow() > 1) {
-        var soalData = sheetSoal.getDataRange().getValues();
-        for (var s = 1; s < soalData.length; s++) {
-          var r = soalData[s];
-          if (r[1] === idMapel || String(r[1]).toLowerCase() === String(idMapel).toLowerCase()) {
-            bankSoal.push({
-              id_soal: r[0],
-              id_mapel: r[1],
-              jenis_soal: r[2],
-              pertanyaan: r[3],
-              url_gambar: r[4],
-              opsi_json: r[5],
-              kunci_jawaban_json: r[6],
-              bobot: Number(r[7]) || 1
-            });
-          }
+      // Ambil soal dari GDrive untuk scoring
+      var bankSoal = readDriveJson(folders.soal, 'soal.json') || [];
+      var filteredSoal = [];
+      for (var b = 0; b < bankSoal.length; b++) {
+        if (bankSoal[b].id_mapel === idMapel || String(bankSoal[b].id_mapel).toLowerCase() === String(idMapel).toLowerCase()) {
+          filteredSoal.push(bankSoal[b]);
         }
       }
 
-      // 3. Hitung Skor (atau gunakan skor yang sudah dihitung frontend jika bank soal di sheet belum disinkron)
       var hasil;
-      if (bankSoal.length > 0) {
-        hasil = hitungSkorOtomatis(bankSoal, jawabanSiswa);
+      if (filteredSoal.length > 0) {
+        hasil = hitungSkorOtomatis(filteredSoal, jawabanSiswa);
       } else {
         hasil = {
           totalSkor: Number(payload.skor_total) || 0,
@@ -330,7 +331,7 @@ function doPost(e) {
       var idHasil = payload.id_hasil || ('H-' + new Date().getTime());
       var timestamp = payload.timestamp || Utilities.formatDate(new Date(), 'GMT+7', 'yyyy-MM-dd HH:mm:ss');
 
-      // 4. Tulis baris baru ke Tab HasilUjian
+      // TULIS HASIL UJIAN KE SPREADSHEET (HANYA INI YANG DICATAT DI SPREADSHEET)
       sheetHasil.appendRow([
         idHasil,
         timestamp,
@@ -348,9 +349,28 @@ function doPost(e) {
         durasiMenit
       ]);
 
+      // Simpan juga salinan JSON individual ke folder CBT Online/hasil/
+      var recordHasilJson = {
+        id_hasil: idHasil,
+        timestamp: timestamp,
+        nisn: nisn,
+        nama_siswa: namaSiswa,
+        kelas: kelas,
+        id_mapel: idMapel,
+        jawaban_siswa: jawabanSiswa,
+        skor_per_soal: hasil.skorPerSoal,
+        skor_total: hasil.totalSkor,
+        total_bobot: hasil.totalBobot,
+        nilai_akhir: hasil.nilaiAkhir,
+        status_koreksi: hasil.statusKoreksi,
+        pelanggaran_curang: pelanggaran,
+        durasi_menit: durasiMenit
+      };
+      saveDriveJson(folders.hasil, 'hasil_' + idHasil + '.json', recordHasilJson);
+
       response = {
         status: 'success',
-        message: 'Hasil ujian berhasil disimpan ke tab HasilUjian Google Sheets!',
+        message: 'Hasil ujian berhasil dicatat di tab HasilUjian Google Sheets dan diarsipkan di Google Drive (CBT Online/hasil/)!',
         id_hasil: idHasil,
         skor_total: hasil.totalSkor,
         total_bobot: hasil.totalBobot,
@@ -358,7 +378,11 @@ function doPost(e) {
         skorPerSoal: hasil.skorPerSoal,
         statusKoreksi: hasil.statusKoreksi
       };
-    } else if (action === 'submitBulkJawaban' || action === 'syncAllResults') {
+    } 
+    // ------------------------------------------------------------
+    // AKSI 2: SINKRONISASI BULK HASIL UJIAN KE SPREADSHEET
+    // ------------------------------------------------------------
+    else if (action === 'submitBulkJawaban' || action === 'syncAllResults') {
       var sheetHasil = getOrCreateSheet(ss, 'HasilUjian', [
         'id_hasil', 'timestamp', 'nisn', 'nama_siswa', 'kelas', 'id_mapel',
         'jawaban_siswa', 'skor_per_soal', 'skor_total', 'total_bobot',
@@ -392,55 +416,54 @@ function doPost(e) {
           ]);
           existingIds[String(h.id_hasil)] = true;
           countAdded++;
+          // Simpan arsip JSON
+          saveDriveJson(folders.hasil, 'hasil_' + h.id_hasil + '.json', h);
         }
       }
       response = {
         status: 'success',
-        message: 'Berhasil menyinkronkan ' + countAdded + ' hasil ujian ke tab HasilUjian Google Sheets!',
+        message: 'Berhasil mencatat ' + countAdded + ' hasil ujian ke tab HasilUjian Google Sheets!',
         countAdded: countAdded
       };
-    } else if (action === 'syncUpload' || action === 'saveAllData') {
-      // Overwrite/update sheets with payload data from frontend
-      if (payload.mapel && Array.isArray(payload.mapel) && payload.mapel.length > 0) {
-        var sheetMapel = getOrCreateSheet(ss, 'MataPelajaran', ['id_mapel', 'nama_mapel', 'kelas', 'durasi_menit', 'token_akses', 'status_aktif']);
-        sheetMapel.clearContents();
-        sheetMapel.appendRow(['id_mapel', 'nama_mapel', 'kelas', 'durasi_menit', 'token_akses', 'status_aktif']);
-        for (var m = 0; m < payload.mapel.length; m++) {
-          var itemM = payload.mapel[m];
-          sheetMapel.appendRow([itemM.id_mapel, itemM.nama_mapel, itemM.kelas, itemM.durasi_menit, itemM.token_akses, itemM.status_aktif]);
-        }
+    } 
+    // ------------------------------------------------------------
+    // AKSI 3: UPLOAD DATA SOAL & SISWA KE GOOGLE DRIVE (.JSON)
+    // Sesuai instruksi: Data siswa & soal TIDAK dicatat di Spreadsheet!
+    // ------------------------------------------------------------
+    else if (action === 'syncUpload' || action === 'saveAllData') {
+      var countSoalSaved = 0;
+      var countSiswaSaved = 0;
+
+      // 1. Simpan Soal ke Google Drive folder "CBT Online/soal/soal.json"
+      if (payload.soal && Array.isArray(payload.soal)) {
+        saveDriveJson(folders.soal, 'soal.json', payload.soal);
+        countSoalSaved = payload.soal.length;
       }
-      if (payload.soal && Array.isArray(payload.soal) && payload.soal.length > 0) {
-        var sheetSoal = getOrCreateSheet(ss, 'BankSoal', ['id_soal', 'id_mapel', 'jenis_soal', 'pertanyaan', 'url_gambar', 'opsi_json', 'kunci_jawaban_json', 'bobot', 'pembahasan']);
-        sheetSoal.clearContents();
-        sheetSoal.appendRow(['id_soal', 'id_mapel', 'jenis_soal', 'pertanyaan', 'url_gambar', 'opsi_json', 'kunci_jawaban_json', 'bobot', 'pembahasan']);
-        for (var s = 0; s < payload.soal.length; s++) {
-          var itemS = payload.soal[s];
-          sheetSoal.appendRow([
-            itemS.id_soal,
-            itemS.id_mapel,
-            itemS.jenis_soal,
-            itemS.pertanyaan,
-            itemS.url_gambar || '',
-            typeof itemS.opsi_json === 'string' ? itemS.opsi_json : JSON.stringify(itemS.opsi_json || []),
-            typeof itemS.kunci_jawaban_json === 'string' ? itemS.kunci_jawaban_json : JSON.stringify(itemS.kunci_jawaban_json || ''),
-            itemS.bobot || 1,
-            itemS.pembahasan || ''
-          ]);
-        }
+
+      // 2. Simpan Data Siswa ke Google Drive folder "CBT Online/siswa/siswa.json"
+      if (payload.siswa && Array.isArray(payload.siswa)) {
+        saveDriveJson(folders.siswa, 'siswa.json', payload.siswa);
+        countSiswaSaved = payload.siswa.length;
       }
-      if (payload.siswa && Array.isArray(payload.siswa) && payload.siswa.length > 0) {
-        var sheetSiswa = getOrCreateSheet(ss, 'DataSiswa', ['nisn', 'nama_siswa', 'kelas', 'pin_siswa']);
-        sheetSiswa.clearContents();
-        sheetSiswa.appendRow(['nisn', 'nama_siswa', 'kelas', 'pin_siswa']);
-        for (var sw = 0; sw < payload.siswa.length; sw++) {
-          var itemSw = payload.siswa[sw];
-          sheetSiswa.appendRow([itemSw.nisn, itemSw.nama_siswa, itemSw.kelas, itemSw.pin_siswa || '1234']);
-        }
+
+      // 3. Simpan Metadata Mapel & Paket ke Google Drive folder "CBT Online/soal/"
+      if (payload.mapel && Array.isArray(payload.mapel)) {
+        saveDriveJson(folders.soal, 'mapel.json', payload.mapel);
       }
+      if (payload.kode_soal && Array.isArray(payload.kode_soal)) {
+        saveDriveJson(folders.soal, 'kode_soal.json', payload.kode_soal);
+      }
+
+      // Pastikan Tab HasilUjian tersedia di spreadsheet
+      getOrCreateSheet(ss, 'HasilUjian', [
+        'id_hasil', 'timestamp', 'nisn', 'nama_siswa', 'kelas', 'id_mapel',
+        'jawaban_siswa', 'skor_per_soal', 'skor_total', 'total_bobot',
+        'nilai_akhir', 'status_koreksi', 'pelanggaran_curang', 'durasi_menit'
+      ]);
+
       response = {
         status: 'success',
-        message: 'Data berhasil disinkronkan dan disimpan ke Google Spreadsheet (GDrive)!'
+        message: 'Berhasil menyimpan ' + countSoalSaved + ' butir soal ke /soal/soal.json dan ' + countSiswaSaved + ' data siswa ke /siswa/siswa.json di Google Drive ("CBT Online"). Spreadsheet hanya mencatat Hasil Ujian.'
       };
     } else {
       response = { status: 'error', message: 'Aksi POST tidak dikenal.' };
@@ -986,7 +1009,7 @@ export async function tarikDataDariGoogleSheets(targetUrl?: string): Promise<{
 
     return {
       success: true,
-      message: `Sinkronisasi berhasil! Diperoleh ${cMapel} mapel, ${cSoal} soal, ${cSiswa} siswa, dan ${cHasil} hasil ujian dari Google Sheets.`,
+      message: `Sinkronisasi berhasil! Diperoleh ${cMapel} mapel & ${cSoal} soal (dari Drive /soal/), ${cSiswa} siswa (dari Drive /siswa/), dan ${cHasil} hasil ujian (dari Spreadsheet).`,
       countMapel: cMapel,
       countSoal: cSoal,
       countSiswa: cSiswa,
@@ -995,12 +1018,12 @@ export async function tarikDataDariGoogleSheets(targetUrl?: string): Promise<{
   } catch (err: any) {
     return {
       success: false,
-      message: err.message || 'Gagal menarik data dari Google Sheets. Pastikan skrip Code.gs telah diperbarui dan di-deploy.',
+      message: err.message || 'Gagal menarik data dari Google Drive / Apps Script. Pastikan skrip Code.gs telah di-deploy.',
     };
   }
 }
 
-// Push / Upload local data to Google Sheets (overwrites/updates sheets)
+// Push / Upload local data to Google Drive & Sheets
 export async function unggahDataKeGoogleSheets(targetUrl?: string): Promise<{ success: boolean; message: string }> {
   const url = (targetUrl || getGasWebappUrl()).trim();
   if (!url) {
@@ -1010,12 +1033,14 @@ export async function unggahDataKeGoogleSheets(targetUrl?: string): Promise<{ su
   const mapel = getMataPelajaran();
   const soal = getBankSoal();
   const siswa = getDataSiswa();
+  const kode_soal = getKodeSoalList();
 
   const payload = {
     action: 'syncUpload',
     mapel,
     soal,
     siswa,
+    kode_soal,
   };
 
   try {
@@ -1034,12 +1059,12 @@ export async function unggahDataKeGoogleSheets(targetUrl?: string): Promise<{ su
 
     return {
       success: true,
-      message: `Berhasil mengunggah ${soal.length} butir soal, ${mapel.length} mata pelajaran, dan ${siswa.length} data siswa ke Google Spreadsheet (GDrive)!`,
+      message: `Berhasil menyimpan data ${soal.length} soal ke folder "CBT Online/soal/soal.json" dan ${siswa.length} siswa ke "CBT Online/siswa/siswa.json" di Google Drive! Tab HasilUjian di Google Spreadsheet siap mencatat nilai siswa.`,
     };
   } catch (err: any) {
     return {
       success: false,
-      message: err.message || 'Gagal mengunggah data ke Google Sheets.',
+      message: err.message || 'Gagal mengunggah data ke Google Drive / Apps Script.',
     };
   }
 }
