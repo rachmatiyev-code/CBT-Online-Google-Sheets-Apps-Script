@@ -24,6 +24,7 @@ import { ExamScreen } from './components/ExamScreen';
 import { ExamResultScreen } from './components/ExamResultScreen';
 import { AdminDashboard } from './components/AdminDashboard';
 import { StorageStatusModal } from './components/admin/StorageStatusModal';
+import { checkAndAutoInitNewEnvironment } from './utils/folderInitializer';
 
 export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('login');
@@ -44,6 +45,9 @@ export default function App() {
 
   // Initialize data on mount and check URL parameters
   useEffect(() => {
+    // Skrip utilitas untuk men-generate struktur folder JSON secara otomatis jika aplikasi dijalankan pertama kali di lingkungan baru
+    checkAndAutoInitNewEnvironment();
+
     setMapelList(getMataPelajaran());
     setSoalList(getBankSoal());
     setSiswaList(getDataSiswa());

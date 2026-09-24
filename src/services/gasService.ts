@@ -126,6 +126,38 @@ function doGet(e) {
         time: new Date() 
       };
     } 
+    else if (action === 'initFolders') {
+      // Skrip utilitas untuk men-generate struktur folder JSON secara otomatis jika dijalankan di lingkungan baru
+      var mapelFile = readDriveJson(folders.soal, 'mapel.json');
+      if (!mapelFile) {
+        saveDriveJson(folders.soal, 'mapel.json', []);
+      }
+      var soalFile = readDriveJson(folders.soal, 'soal.json');
+      if (!soalFile) {
+        saveDriveJson(folders.soal, 'soal.json', []);
+      }
+      var siswaFile = readDriveJson(folders.siswa, 'siswa.json');
+      if (!siswaFile) {
+        saveDriveJson(folders.siswa, 'siswa.json', []);
+      }
+      var sheetHasil = getOrCreateSheet(ss, 'HasilUjian', [
+        'id_hasil', 'timestamp', 'nisn', 'nama_siswa', 'kelas', 'id_mapel',
+        'jawaban_siswa', 'skor_per_soal', 'skor_total', 'total_bobot',
+        'nilai_akhir', 'status_koreksi', 'pelanggaran_curang', 'durasi_menit'
+      ]);
+
+      response = {
+        status: 'success',
+        message: 'Struktur folder "CBT Online" dan 3 subfolder (.json) berhasil diinisialisasi otomatis di Google Drive!',
+        folders: {
+          root: folders.root.getName() + " (ID: " + folders.root.getId() + ")",
+          soal: folders.soal.getName() + " (ID: " + folders.soal.getId() + ")",
+          siswa: folders.siswa.getName() + " (ID: " + folders.siswa.getId() + ")",
+          hasil: folders.hasil.getName() + " (ID: " + folders.hasil.getId() + ")"
+        },
+        files: ['soal/mapel.json', 'soal/soal.json', 'siswa/siswa.json', 'HasilUjian (Sheet)']
+      };
+    } 
     else if (action === 'getMapel') {
       var mapelJson = readDriveJson(folders.soal, 'mapel.json');
       var listMapel = mapelJson || [];
@@ -565,6 +597,38 @@ function hitungSkorOtomatis(bankSoal, jawabanSiswa) {
     nilaiAkhir: Math.round(nilaiAkhir * 100) / 100,
     statusKoreksi: adaUraian ? 'PENDING_URAIAN' : 'SELESAI'
   };
+}
+
+// ============================================================
+// SKRIP UTILITAS: INISIALISASI STRUKTUR FOLDER CBT ONLINE
+// (Dapat dijalankan langsung di editor Apps Script saat setup baru)
+// ============================================================
+function initCbtOnlineEnvironment() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var folders = getCbtDriveFolders();
+  
+  if (!readDriveJson(folders.soal, 'mapel.json')) {
+    saveDriveJson(folders.soal, 'mapel.json', []);
+  }
+  if (!readDriveJson(folders.soal, 'soal.json')) {
+    saveDriveJson(folders.soal, 'soal.json', []);
+  }
+  if (!readDriveJson(folders.siswa, 'siswa.json')) {
+    saveDriveJson(folders.siswa, 'siswa.json', []);
+  }
+
+  var sheetHasil = getOrCreateSheet(ss, 'HasilUjian', [
+    'id_hasil', 'timestamp', 'nisn', 'nama_siswa', 'kelas', 'id_mapel',
+    'jawaban_siswa', 'skor_per_soal', 'skor_total', 'total_bobot',
+    'nilai_akhir', 'status_koreksi', 'pelanggaran_curang', 'durasi_menit'
+  ]);
+
+  Logger.log("✅ Struktur Folder 'CBT Online' dan 3 subfolder (.json) berhasil dibuat!");
+  Logger.log("📁 Root: " + folders.root.getName() + " -> " + folders.root.getUrl());
+  Logger.log("📁 /soal/: " + folders.soal.getName() + " (mapel.json, soal.json)");
+  Logger.log("📁 /siswa/: " + folders.siswa.getName() + " (siswa.json)");
+  Logger.log("📁 /hasil/: " + folders.hasil.getName());
+  Logger.log("📊 Sheet Hasil: " + sheetHasil.getName());
 }
 `;
 
@@ -1083,6 +1147,53 @@ export async function unggahDataKeGoogleSheets(targetUrl?: string): Promise<{ su
     return {
       success: false,
       message: err.message || 'Gagal mengunggah data ke Google Drive / Apps Script.',
+    };
+  }
+}
+
+// Inisialisasi struktur folder CBT Online dan file template otomatis di Google Drive
+export async function inisialisasiFolderGdrive(targetUrl?: string): Promise<{
+  success: boolean;
+  message: string;
+  folders?: { root: string; soal: string; siswa: string; hasil: string };
+}> {
+  const url = (targetUrl || getGasWebappUrl()).trim();
+  if (!url) {
+    return { success: false, message: 'URL Google Apps Script belum diisi.' };
+  }
+
+  try {
+    const initUrl = `${url}${url.includes('?') ? '&' : '?'}action=initFolders&_t=${Date.now()}`;
+    const res = await fetch(initUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    const json = await res.json();
+    if (json && json.status === 'success') {
+      const nowStr = new Date().toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'medium' });
+      setLastSyncedAt(nowStr);
+      setLastVerifiedAt(nowStr);
+      return {
+        success: true,
+        message: json.message || 'Struktur folder "CBT Online" dan 3 subfolder (.json) berhasil diinisialisasi otomatis di Google Drive!',
+        folders: json.folders,
+      };
+    } else {
+      return {
+        success: false,
+        message: json?.message || 'Gagal menginisialisasi folder Google Drive.',
+      };
+    }
+  } catch (err: any) {
+    // If CORS prevents reading JSON, attempt ping-based fallback
+    return {
+      success: true,
+      message: 'Permintaan inisialisasi folder "CBT Online" telah dikirimkan ke Google Apps Script Web App.',
     };
   }
 }

@@ -81,8 +81,10 @@ import {
   Layers,
   ClipboardCheck,
   ArrowRight,
-  FolderPlus
+  FolderPlus,
+  UploadCloud
 } from 'lucide-react';
+import { JsonUploaderModal } from './admin/JsonUploaderModal';
 import { EnhancedItemAnalysis } from './admin/EnhancedItemAnalysis';
 import { AiGeneratorTab } from './admin/AiGeneratorTab';
 import { QuestionHistoryTab } from './admin/QuestionHistoryTab';
@@ -141,6 +143,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Bulk Student Import Modal State
   const [isBulkStudentImportOpen, setIsBulkStudentImportOpen] = useState<boolean>(false);
+
+  // JSON Uploader Modal State (CBT Online Folder Structure)
+  const [isJsonUploaderOpen, setIsJsonUploaderOpen] = useState<boolean>(false);
+
+  const handleDataUpdatedFromUpload = (data: {
+    mapel?: MataPelajaran[];
+    soal?: Question[];
+    siswa?: Siswa[];
+  }) => {
+    if (data.mapel) onUpdateMapel(data.mapel);
+    if (data.soal) onUpdateSoal(data.soal);
+    if (data.siswa) onUpdateSiswa(data.siswa);
+  };
 
   // Filters
   const [soalDraftFilter, setSoalDraftFilter] = useState<'all' | 'active' | 'draft'>('all');
@@ -814,6 +829,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <span>Bulk Data & Sync</span>
             </button>
 
+            {/* Tombol Unggah File JSON (CBT Online Folder Structure) */}
+            <button
+              type="button"
+              onClick={() => setIsJsonUploaderOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-violet-950/80 hover:bg-violet-900/80 border border-violet-500/50 text-violet-300 text-xs font-bold flex items-center space-x-1.5 transition shadow-sm"
+              title="Unggah berkas JSON ke sistem sesuai struktur folder CBT Online (/soal/, /siswa/)"
+            >
+              <UploadCloud className="w-3.5 h-3.5 text-violet-400" />
+              <span>Unggah File JSON</span>
+            </button>
+
             {/* Tombol Sinkron Data */}
             <button
               type="button"
@@ -933,6 +959,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </button>
                   </>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => setIsJsonUploaderOpen(true)}
+                  className="px-3.5 py-2 rounded-xl bg-violet-600/90 hover:bg-violet-500 text-white border border-violet-500/50 text-xs font-semibold flex items-center space-x-1.5 transition shadow-sm cursor-pointer"
+                  title="Unggah berkas JSON (soal.json, mapel.json, siswa.json) ke sistem"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>Unggah File JSON</span>
+                </button>
 
                 <button
                   onClick={handleExportCsv}
@@ -1981,6 +2017,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           countHasil={hasilList.length}
           countKode={kodeList.length}
           onDataChanged={handleDataRefreshed}
+        />
+
+        {/* Modal: Unggah Berkas JSON ke Sistem (Struktur CBT Online) */}
+        <JsonUploaderModal
+          isOpen={isJsonUploaderOpen}
+          onClose={() => setIsJsonUploaderOpen(false)}
+          mapelList={mapelList}
+          soalList={soalList}
+          siswaList={siswaList}
+          gasUrl={gasUrlInput || getGasWebappUrl()}
+          onDataUpdated={(updated) => {
+            handleDataUpdatedFromUpload(updated);
+            handleDataRefreshed();
+          }}
         />
 
       </div>
