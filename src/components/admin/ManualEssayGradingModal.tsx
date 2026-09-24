@@ -49,16 +49,39 @@ export const ManualEssayGradingModal: React.FC<ManualEssayGradingModalProps> = (
   if (!isOpen || !hasil) return null;
 
   // Filter questions for this exam
-  // First, questions that match this exam's id_mapel
-  const mapelQuestions = bankSoal.filter(q => q.id_mapel === hasil.id_mapel);
+  const studentAnswerKeys = Object.keys(hasil.jawaban_siswa || {});
   
-  // Specifically filter Uraian (UR) questions, or questions present in jawaban_siswa
-  const uraianQuestions = mapelQuestions.filter(q => q.jenis_soal === 'UR');
-  // If there are questions in student's answer that are UR, prioritize them
-  const questionsToReview = uraianQuestions.length > 0 ? uraianQuestions : mapelQuestions;
+  // Find questions in bank matching student answers or mapel
+  const questionsByAnswerKey = bankSoal.filter(q => studentAnswerKeys.includes(q.id_soal));
+  const questionsByMapel = bankSoal.filter(q => q.id_mapel === hasil.id_mapel);
+  const examQuestionsPool = questionsByAnswerKey.length > 0 ? questionsByAnswerKey : questionsByMapel;
+
+  // Filter Uraian (UR) questions
+  let uraianQuestions = examQuestionsPool.filter(q => q.jenis_soal === 'UR');
+  if (uraianQuestions.length === 0) {
+    uraianQuestions = bankSoal.filter(q => q.jenis_soal === 'UR' && (q.id_mapel === hasil.id_mapel || studentAnswerKeys.includes(q.id_soal)));
+  }
+
+  // Prioritize Uraian questions, fallback to exam questions or student answers
+  const questionsToReview: Question[] = uraianQuestions.length > 0 
+    ? uraianQuestions 
+    : (examQuestionsPool.length > 0 
+        ? examQuestionsPool 
+        : studentAnswerKeys.map(k => ({
+            id_soal: k,
+            id_mapel: hasil.id_mapel,
+            jenis_soal: 'UR' as const,
+            pertanyaan: `Pertanyaan butir (${k})`,
+            bobot: 1,
+            opsi_json: [],
+            kunci_jawaban_json: '',
+            pembahasan: '',
+            url_gambar: undefined,
+          }))
+      );
 
   // Calculate live scores
-  const allExamQuestions = mapelQuestions.length > 0 ? mapelQuestions : questionsToReview;
+  const allExamQuestions = examQuestionsPool.length > 0 ? examQuestionsPool : questionsToReview;
   
   let calculatedTotalBobot = 0;
   let calculatedTotalSkor = 0;
@@ -98,7 +121,7 @@ export const ManualEssayGradingModal: React.FC<ManualEssayGradingModalProps> = (
         skor_total: Math.round(calculatedTotalSkor * 100) / 100,
         total_bobot: totalBobotToUse,
         nilai_akhir: Math.min(100, Math.max(0, nilaiAkhirKalkulasi)),
-        status_koreksi: markComplete ? 'SELESAI' : hasil.status_koreksi,
+        status_koreksi: markComplete ? 'SELESAI' : 'PENDING_URAIAN',
         catatan_guru: catatanGuru.trim() || undefined,
       };
 
@@ -362,13 +385,23 @@ export const ManualEssayGradingModal: React.FC<ManualEssayGradingModalProps> = (
             </span>
           </div>
 
-          <div className="flex items-center space-x-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 text-xs font-medium transition cursor-pointer"
+              className="px-3.5 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 text-xs font-medium transition cursor-pointer"
             >
-              Tutup
+              Batal
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSave(false)}
+              disabled={isSaving}
+              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 hover:text-white text-xs font-semibold transition border border-slate-700 cursor-pointer"
+              title="Simpan perubahan skor namun biarkan status tetap PENDING URAIAN untuk ditinjau kembali"
+            >
+              Simpan Draf
             </button>
 
             <button
@@ -385,7 +418,7 @@ export const ManualEssayGradingModal: React.FC<ManualEssayGradingModalProps> = (
               ) : (
                 <>
                   <Save className="w-4 h-4" />
-                  <span>{isSaving ? 'Menyimpan...' : 'Simpan Nilai & Tuntaskan Koreksi'}</span>
+                  <span>{isSaving ? 'Menyimpan...' : 'Simpan & Tuntaskan Koreksi'}</span>
                 </>
               )}
             </button>

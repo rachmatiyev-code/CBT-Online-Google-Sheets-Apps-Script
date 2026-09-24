@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   MataPelajaran, 
   Question, 
@@ -77,7 +77,9 @@ import {
   FileCheck,
   PenLine,
   FileText,
-  Layers
+  Layers,
+  ClipboardCheck,
+  ArrowRight
 } from 'lucide-react';
 import { EnhancedItemAnalysis } from './admin/EnhancedItemAnalysis';
 import { AiGeneratorTab } from './admin/AiGeneratorTab';
@@ -89,6 +91,7 @@ import { GeminiApiKeyTab } from './admin/GeminiApiKeyTab';
 import { ManualEssayGradingModal } from './admin/ManualEssayGradingModal';
 import { BulkStudentImportModal } from './admin/BulkStudentImportModal';
 import { BulkDataManagementPanel } from './admin/BulkDataManagementPanel';
+import { ExamResultReviewTab } from './admin/ExamResultReviewTab';
 
 interface AdminDashboardProps {
   mapelList: MataPelajaran[];
@@ -141,6 +144,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [soalDraftFilter, setSoalDraftFilter] = useState<'all' | 'active' | 'draft'>('all');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
   const [hasilStatusFilter, setHasilStatusFilter] = useState<'all' | 'pending' | 'selesai'>('all');
+
+  // Count of exams pending manual essay grading
+  const pendingGradingCount = useMemo(() => {
+    return hasilList.filter(h => h.status_koreksi === 'PENDING_URAIAN').length;
+  }, [hasilList]);
 
   // Manual essay grading handlers
   const handleOpenGrading = (hasil: HasilUjian) => {
@@ -593,6 +601,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('hasil-rekap')}
+              className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
+                activeTab === 'hasil-rekap'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <ClipboardCheck className="w-3.5 h-3.5 text-amber-300" />
+              <span>Peninjauan & Koreksi</span>
+              {pendingGradingCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] animate-pulse">
+                  {pendingGradingCount}
+                </span>
+              )}
+            </button>
+
+            <button
               onClick={() => setActiveTab('kode-soal')}
               className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
                 activeTab === 'kode-soal'
@@ -733,6 +758,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* Right: Quick Action Buttons (Sync & Delete Dummy) */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* Tombol Peninjauan & Koreksi Uraian */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('hasil-rekap')}
+              className={`px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center space-x-1.5 transition shadow-sm ${
+                activeTab === 'hasil-rekap'
+                  ? 'bg-amber-600 text-white border-amber-500 shadow-amber-950/40'
+                  : pendingGradingCount > 0
+                    ? 'bg-amber-950/80 hover:bg-amber-900/80 border-amber-500/60 text-amber-300'
+                    : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300'
+              }`}
+              title="Tinjau hasil ujian dan beri penilaian manual pada soal tipe uraian"
+            >
+              <ClipboardCheck className="w-3.5 h-3.5 text-amber-400" />
+              <span>Koreksi Uraian</span>
+              {pendingGradingCount > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black animate-pulse">
+                  {pendingGradingCount}
+                </span>
+              )}
+            </button>
+
             {/* Tombol Bulk Data Management */}
             <button
               type="button"
@@ -771,6 +818,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Banner Notifikasi Butir Soal Uraian Menunggu Koreksi Manual */}
+        {pendingGradingCount > 0 && activeTab !== 'hasil-rekap' && (
+          <div className="bg-gradient-to-r from-amber-950/80 via-slate-900 to-amber-950/60 border border-amber-500/50 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl shadow-amber-950/30 animate-fadeIn">
+            <div className="flex items-center space-x-3.5">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/40">
+                <PenLine className="w-5 h-5 animate-pulse" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center space-x-2">
+                  <h4 className="text-sm font-bold text-amber-200">
+                    Menunggu Koreksi Manual: {pendingGradingCount} Berkas Ujian Siswa
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500 text-slate-950">
+                    Uraian Belum Dinilai
+                  </span>
+                </div>
+                <p className="text-xs text-amber-300/80">
+                  Pertanyaan tipe uraian belum dinilai otomatis. Berikan skor manual dan catatan guru agar rekap nilai akhir siswa menjadi tuntas.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('hasil-rekap')}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center space-x-1.5 transition shadow-md shadow-amber-500/20 cursor-pointer shrink-0"
+            >
+              <span>Tinjau & Beri Skor Uraian</span>
+              <ArrowRight className="w-4 h-4 ml-0.5" />
+            </button>
+          </div>
+        )}
 
         {/* ============================================================ */}
         {/* TAB 1: DATABASE GOOGLE SHEETS SPREADSHEET                     */}
@@ -1339,6 +1419,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             )}
 
           </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* TAB 1.2: PENINJAUAN HASIL UJIAN & SKORING MANUAL URAIAN       */}
+        {/* ============================================================ */}
+        {activeTab === 'hasil-rekap' && (
+          <ExamResultReviewTab
+            hasilList={hasilList}
+            bankSoal={soalList}
+            mapelList={mapelList}
+            siswaList={siswaList}
+            onOpenGrading={handleOpenGrading}
+            onUpdateHasil={onUpdateHasil}
+          />
         )}
 
         {/* ============================================================ */}
