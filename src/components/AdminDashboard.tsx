@@ -1875,7 +1875,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span className="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-200 font-semibold">{deletingQuestion.jenis_soal}</span>
                 </div>
                 <div className="text-slate-300 font-sans line-clamp-3 leading-relaxed">
-                  "{deletingQuestion.pertanyaan}"
+                  "{cleanQuestionText(deletingQuestion.pertanyaan)}"
                 </div>
                 {deletingQuestion.url_gambar && (
                   <div className="flex items-center space-x-2 pt-2 border-t border-slate-800">

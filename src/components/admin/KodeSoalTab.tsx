@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { KodeSoalPaket, MataPelajaran, Question, DAFTAR_MATA_PELAJARAN } from '../../types';
+import { cleanQuestionText } from '../../utils/textUtils';
 import { 
   FileKey, 
   Plus, 
@@ -741,7 +742,7 @@ export const KodeSoalTab: React.FC<KodeSoalTabProps> = ({
                               <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300 mr-2 font-mono">
                                 {s.jenis_soal}
                               </span>
-                              <span className="line-clamp-1">{s.pertanyaan}</span>
+                              <span className="line-clamp-1">{cleanQuestionText(s.pertanyaan)}</span>
                             </div>
                           </label>
                         );

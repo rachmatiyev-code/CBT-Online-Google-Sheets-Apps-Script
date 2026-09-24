@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HasilUjian, Question } from '../../types';
+import { cleanQuestionText } from '../../utils/textUtils';
 import { 
   X, 
   CheckCircle2, 
@@ -261,7 +262,7 @@ export const ManualEssayGradingModal: React.FC<ManualEssayGradingModalProps> = (
                   <div className="space-y-2">
                     <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Teks Pertanyaan:</span>
                     <p className="text-xs sm:text-sm text-slate-200 leading-relaxed bg-slate-900/60 p-3.5 rounded-xl border border-slate-800">
-                      {q.pertanyaan}
+                      {cleanQuestionText(q.pertanyaan)}
                     </p>
                     {q.url_gambar && (
                       <div className="mt-2 max-w-sm rounded-xl overflow-hidden border border-slate-800">

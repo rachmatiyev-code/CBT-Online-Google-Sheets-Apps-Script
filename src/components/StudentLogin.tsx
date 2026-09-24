@@ -30,14 +30,21 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
   dbMode = 'simulator',
   onStartExam,
 }) => {
-  // Filter student list: if full database mode (GDrive) is active, strictly exclude dummy records
+  // Check if accessed from a shared link
+  const isFromSharedLink = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('mode') === 'siswa' || Boolean(params.get('gas')) || Boolean(params.get('mapel')) || Boolean(params.get('kode'));
+  }, []);
+
+  // Filter student list: if full database mode (GDrive) or shared link, strictly exclude dummy records
   const filteredSiswaList = useMemo(() => {
-    if (dbMode === 'database_penuh') {
-      const real = siswaList.filter(s => !s.is_dummy);
-      return real.length > 0 ? real : siswaList.filter(s => !s.is_dummy);
+    const realStudents = siswaList.filter(s => !s.is_dummy);
+    if (dbMode === 'database_penuh' || isFromSharedLink) {
+      return realStudents;
     }
-    return siswaList;
-  }, [siswaList, dbMode]);
+    return realStudents.length > 0 ? realStudents : siswaList;
+  }, [siswaList, dbMode, isFromSharedLink]);
 
   const [selectedMapelId, setSelectedMapelId] = useState<string>(mapelList[0]?.id_mapel || '');
   const [selectedKodeSoal, setSelectedKodeSoal] = useState<string>('');
@@ -47,7 +54,6 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
   const [enteredToken, setEnteredToken] = useState<string>('');
   const [agreedToRules, setAgreedToRules] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isFromSharedLink, setIsFromSharedLink] = useState<boolean>(false);
 
   // Initialize from URL parameters if accessed via shared student link
   useEffect(() => {
@@ -55,12 +61,7 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
       const params = new URLSearchParams(window.location.search);
       const qMapel = params.get('mapel');
       const qNisn = params.get('nisn');
-      const qMode = params.get('mode');
       const qKode = params.get('kode');
-
-      if (qMode === 'siswa' || qMapel || qNisn || qKode) {
-        setIsFromSharedLink(true);
-      }
 
       if (qKode) {
         setSelectedKodeSoal(qKode);
@@ -69,18 +70,22 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
       if (qMapel && mapelList.some(m => m.id_mapel === qMapel)) {
         setSelectedMapelId(qMapel);
       }
+
       if (qNisn) {
-        setManualNisn(qNisn);
-        const matched = filteredSiswaList.find(s => s.nisn === qNisn);
-        if (matched) {
-          setSelectedNisn(matched.nisn);
-          setEnteredPin(matched.pin_siswa);
-        } else {
-          setSelectedNisn(qNisn);
+        const dummyNisns = ['12345', '12346', '12347', '12348', '12349', '12350', '12351', '12352'];
+        const isDummy = dummyNisns.includes(qNisn);
+        if (!isDummy || (dbMode !== 'database_penuh' && !isFromSharedLink)) {
+          setManualNisn(qNisn);
+          const matched = filteredSiswaList.find(s => s.nisn === qNisn);
+          if (matched) {
+            setSelectedNisn(matched.nisn);
+          } else {
+            setSelectedNisn(qNisn);
+          }
         }
       }
     }
-  }, [mapelList, filteredSiswaList]);
+  }, [mapelList, filteredSiswaList, dbMode, isFromSharedLink]);
 
   useEffect(() => {
     if (!selectedMapelId && mapelList.length > 0) {
@@ -91,11 +96,8 @@ export const StudentLogin: React.FC<StudentLoginProps> = ({
   useEffect(() => {
     if (!selectedNisn && filteredSiswaList.length > 0) {
       setSelectedNisn(filteredSiswaList[0].nisn);
-      if (dbMode === 'simulator') {
-        setEnteredPin(filteredSiswaList[0].pin_siswa);
-      }
     }
-  }, [filteredSiswaList, selectedNisn, dbMode]);
+  }, [filteredSiswaList, selectedNisn]);
 
   const currentMapel = mapelList.find(m => m.id_mapel === selectedMapelId);
   const currentSiswa = filteredSiswaList.find(s => s.nisn === (selectedNisn || manualNisn));

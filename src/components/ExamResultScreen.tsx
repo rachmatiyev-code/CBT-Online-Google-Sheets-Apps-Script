@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { HasilUjian, MataPelajaran, Question } from '../types';
+import { cleanQuestionText } from '../utils/textUtils';
 import { 
   Award, 
   CheckCircle, 
@@ -250,7 +251,7 @@ export const ExamResultScreen: React.FC<ExamResultScreenProps> = ({
                       </div>
 
                       <p className="text-sm text-slate-200 font-medium mb-4 leading-relaxed">
-                        {q.pertanyaan}
+                        {cleanQuestionText(q.pertanyaan)}
                       </p>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 mb-3">

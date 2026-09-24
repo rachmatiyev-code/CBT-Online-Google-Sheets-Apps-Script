@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { RiwayatPaketSoal, Question, MataPelajaran } from '../../types';
+import { cleanQuestionText } from '../../utils/textUtils';
 import { 
   History, 
   RotateCcw, 
@@ -230,7 +231,7 @@ export const QuestionHistoryTab: React.FC<QuestionHistoryTabProps> = ({
                             </span>
                             <span className="text-slate-400 font-mono text-[11px]">{q.id_soal}</span>
                           </div>
-                          <p className="text-xs text-slate-200 leading-relaxed">{q.pertanyaan}</p>
+                          <p className="text-xs text-slate-200 leading-relaxed">{cleanQuestionText(q.pertanyaan)}</p>
                           {q.jenis_soal === 'PG' && Array.isArray(q.opsi_json) && (
                             <div className="grid grid-cols-2 gap-1.5 text-xs text-slate-400 pl-2">
                               {q.opsi_json.map((opt, oIdx) => (

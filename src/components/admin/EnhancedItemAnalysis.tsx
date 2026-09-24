@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AnalisisItem, MataPelajaran } from '../../types';
+import { cleanQuestionText } from '../../utils/textUtils';
 import { 
   BarChart3, 
   HelpCircle, 
@@ -225,7 +226,7 @@ export const EnhancedItemAnalysis: React.FC<EnhancedItemAnalysisProps> = ({
                   </div>
 
                   <p className="text-xs text-slate-200 font-medium line-clamp-2 leading-relaxed">
-                    {item.pertanyaan}
+                    {cleanQuestionText(item.pertanyaan)}
                   </p>
 
                   <p className="text-[11px] text-slate-400 flex items-center space-x-1">

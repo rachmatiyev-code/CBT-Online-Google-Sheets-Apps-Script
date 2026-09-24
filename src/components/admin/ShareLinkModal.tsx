@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { MataPelajaran, Siswa, KodeSoalPaket, DatabaseMode } from '../../types';
 import { 
   Share2, 
@@ -42,17 +42,32 @@ export const ShareLinkModal: React.FC<ShareLinkModalProps> = ({
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [copiedTemplate, setCopiedTemplate] = useState<boolean>(false);
 
-  // Filter students: in full database mode, strictly exclude dummy records
+  // Filter students: strictly exclude dummy records in shared link generator
   const realStudents = useMemo(() => {
-    if (dbMode === 'database_penuh') {
-      return siswaList.filter(s => !s.is_dummy);
-    }
-    return siswaList;
-  }, [siswaList, dbMode]);
+    return siswaList.filter(s => !s.is_dummy);
+  }, [siswaList]);
 
   const [sampleNisn, setSampleNisn] = useState<string>(() => {
     return realStudents[0]?.nisn || '';
   });
+
+  // Keep sampleNisn updated if realStudents changes
+  useEffect(() => {
+    if (realStudents.length > 0) {
+      if (!sampleNisn || !realStudents.some(s => s.nisn === sampleNisn)) {
+        setSampleNisn(realStudents[0].nisn);
+      }
+    } else {
+      setSampleNisn('');
+    }
+  }, [realStudents, sampleNisn]);
+
+  // Keep includeGasParam synced if gasUrl is available
+  useEffect(() => {
+    if (gasUrl) {
+      setIncludeGasParam(true);
+    }
+  }, [gasUrl]);
 
   const selectedMapel = mapelList.find(m => m.id_mapel === selectedMapelId) || mapelList[0];
   const matchingPackages = kodeList.filter(k => k.id_mapel === selectedMapelId);
@@ -83,21 +98,21 @@ export const ShareLinkModal: React.FC<ShareLinkModalProps> = ({
   const studentLink = `${baseUrl}?${queryParams.toString()}`;
 
   // Pre-formatted message template for WhatsApp, Google Classroom, and Telegram
+  const currentToken = activePackage?.token_akses || selectedMapel?.token_akses || '';
   const announcementTemplate = `📢 *PENGUMUMAN UJIAN CBT ONLINE*
 Kepada seluruh peserta didik yang terhormat, berikut adalah tautan resmi untuk mengikuti ujian:
 
 📚 *Mata Pelajaran:* ${selectedMapel?.nama_mapel || 'Ujian Sekolah'}
 🏫 *Tingkat/Kelas:* ${selectedMapel?.kelas || 'Semua Kelas'}
 ${activePackage ? `📑 *Paket Soal:* [${activePackage.id_kode}] ${activePackage.nama_kode} (${activePackage.jumlah_soal} Soal)\n` : ''}⏱️ *Durasi Waktu:* ${activePackage?.durasi_menit || selectedMapel?.durasi_menit || 45} Menit (KKM: ${selectedMapel?.kkm || 75})
-🔑 *Token Ujian:* *${activePackage?.token_akses || selectedMapel?.token_akses || 'MTK3A'}*
-
+${currentToken ? `🔑 *Token Ujian:* *${currentToken}*\n` : ''}
 🔗 *Link Portal Ujian Siswa:*
 ${studentLink}
 
 ⚠️ *Petunjuk Pengerjaan:*
 1. Buka tautan di atas menggunakan Google Chrome pada HP / Laptop.
 2. Masukkan NISN dan PIN peserta resmi Anda.
-3. Masukkan Token Ujian di atas untuk membuka lembar soal.
+3. Masukkan Token Ujian untuk membuka lembar soal.
 4. Jangan keluar dari aplikasi atau membuka tab lain selama ujian berlangsung.
 Selamat mengerjakan dengan jujur dan teliti!`;
 

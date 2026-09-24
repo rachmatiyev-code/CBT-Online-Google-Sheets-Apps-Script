@@ -827,7 +827,7 @@ Balas HANYA JSON array valid murni:
                   <span className="text-slate-400 text-[11px]">{selectedMapel?.nama_mapel}</span>
                 </div>
 
-                <p className="text-xs text-slate-200 leading-relaxed font-medium">{q.pertanyaan}</p>
+                <p className="text-xs text-slate-200 leading-relaxed font-medium">{cleanQuestionText(q.pertanyaan)}</p>
 
                 {q.jenis_soal === 'PG' && Array.isArray(q.opsi_json) && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-300 pl-2">

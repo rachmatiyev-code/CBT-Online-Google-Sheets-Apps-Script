@@ -696,14 +696,23 @@ export function saveKodeSoalPaket(list: KodeSoalPaket[]): void {
 
 export function getDataSiswa(): Siswa[] {
   const data = localStorage.getItem(STORAGE_KEYS.SISWA);
+  const isFullDb = getDatabaseMode() === 'database_penuh';
+
   if (!data) {
+    if (isFullDb) {
+      return [];
+    }
     localStorage.setItem(STORAGE_KEYS.SISWA, JSON.stringify(DEFAULT_SISWA));
     return DEFAULT_SISWA;
   }
   try {
-    return JSON.parse(data);
+    const parsed: Siswa[] = JSON.parse(data);
+    if (isFullDb) {
+      return parsed.filter(s => !s.is_dummy);
+    }
+    return parsed;
   } catch {
-    return DEFAULT_SISWA;
+    return isFullDb ? [] : DEFAULT_SISWA;
   }
 }
 
@@ -713,14 +722,23 @@ export function saveSiswa(siswaList: Siswa[]): void {
 
 export function getHasilUjian(): HasilUjian[] {
   const data = localStorage.getItem(STORAGE_KEYS.HASIL);
+  const isFullDb = getDatabaseMode() === 'database_penuh';
+
   if (!data) {
+    if (isFullDb) {
+      return [];
+    }
     localStorage.setItem(STORAGE_KEYS.HASIL, JSON.stringify(DEFAULT_HASIL));
     return DEFAULT_HASIL;
   }
   try {
-    return JSON.parse(data);
+    const parsed: HasilUjian[] = JSON.parse(data);
+    if (isFullDb) {
+      return parsed.filter(h => !h.is_dummy);
+    }
+    return parsed;
   } catch {
-    return DEFAULT_HASIL;
+    return isFullDb ? [] : DEFAULT_HASIL;
   }
 }
 

@@ -5,6 +5,7 @@ import {
   MataPelajaran,
   Siswa
 } from '../../types';
+import { cleanQuestionText } from '../../utils/textUtils';
 import {
   Award,
   PenLine,
@@ -850,7 +851,7 @@ export const ExamResultReviewTab: React.FC<ExamResultReviewTabProps> = ({
                           Skor: {score} / {q?.bobot || 1}
                         </span>
                       </div>
-                      {q && <p className="text-slate-300 font-sans">{q.pertanyaan}</p>}
+                      {q && <p className="text-slate-300 font-sans">{cleanQuestionText(q.pertanyaan)}</p>}
                       <div className="p-2.5 rounded-lg bg-indigo-950/30 border border-indigo-500/20 text-slate-200 font-mono text-[11px] whitespace-pre-wrap">
                         {typeof studentAns === 'object' ? JSON.stringify(studentAns, null, 2) : String(studentAns)}
                       </div>
