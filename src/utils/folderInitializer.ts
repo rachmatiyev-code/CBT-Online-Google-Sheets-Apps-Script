@@ -1,4 +1,4 @@
-import { MataPelajaran, Question, Siswa } from '../types';
+import { MataPelajaran, Question, Siswa, HasilUjian } from '../types';
 import { 
   getMataPelajaran, 
   saveMataPelajaran, 
@@ -6,6 +6,8 @@ import {
   saveBankSoal, 
   getDataSiswa, 
   saveSiswa,
+  getHasilUjian,
+  saveHasilUjian,
   getKodeSoalList,
   saveKodeSoalList
 } from '../services/gasService';
@@ -23,12 +25,13 @@ export interface CbtFolderBundle {
       'siswa.json': Siswa[];
     };
     'hasil/': {
+      'hasil.json': HasilUjian[];
       description: string;
     };
   };
 }
 
-export type JsonCategory = 'soal' | 'mapel' | 'siswa' | 'bundle' | 'unknown';
+export type JsonCategory = 'soal' | 'mapel' | 'siswa' | 'hasil' | 'bundle' | 'unknown';
 
 /**
  * Detect the intended CBT Online folder category of any uploaded JSON file
@@ -36,20 +39,27 @@ export type JsonCategory = 'soal' | 'mapel' | 'siswa' | 'bundle' | 'unknown';
 export function detectJsonCategory(data: any): JsonCategory {
   if (!data) return 'unknown';
 
-  // 1. Complete Bundle
-  if (
-    typeof data === 'object' && 
-    !Array.isArray(data) && 
-    (data.folders || (data.mapel && data.soal) || (data.mapelList && data.soalList))
-  ) {
-    return 'bundle';
+  // 1. Single Hasil Ujian Object
+  if (typeof data === 'object' && !Array.isArray(data)) {
+    if (data.id_hasil && (data.nisn || data.nilai_akhir !== undefined || data.skor_total !== undefined)) {
+      return 'hasil';
+    }
+    // 2. Complete Bundle
+    if (data.folders || (data.mapel && data.soal) || (data.mapelList && data.soalList)) {
+      return 'bundle';
+    }
   }
 
-  // If array, inspect first element
+  // If array, inspect elements
   if (Array.isArray(data)) {
     if (data.length === 0) return 'unknown';
     const first = data[0];
     if (typeof first !== 'object' || first === null) return 'unknown';
+
+    // Check Hasil Ujian (hasil.json)
+    if ('id_hasil' in first || ('skor_total' in first && 'nilai_akhir' in first) || ('jawaban_siswa' in first && 'nisn' in first)) {
+      return 'hasil';
+    }
 
     // Check Question (soal.json)
     if ('id_soal' in first || 'jenis_soal' in first || ('pertanyaan' in first && 'opsi_json' in first)) {
@@ -83,25 +93,38 @@ export function validateCbtJsonData(category: JsonCategory, data: any): {
     return { valid: false, message: 'Berkas JSON kosong atau tidak dapat dibaca.', count: 0 };
   }
 
+  // Support single HasilUjian object by normalizing to array
+  if (category === 'hasil' && typeof data === 'object' && !Array.isArray(data) && data.id_hasil) {
+    return {
+      valid: true,
+      message: `Valid: Berkas hasil ujian individual atas nama "${data.nama_siswa || data.nisn}" (${data.id_mapel || 'Ujian'}) dengan nilai akhir ${data.nilai_akhir ?? 0}.`,
+      count: 1,
+      sampleName: `${data.nama_siswa || data.nisn} - Nilai: ${data.nilai_akhir ?? 0}`
+    };
+  }
+
   if (category === 'bundle') {
     let mapelCount = 0;
     let soalCount = 0;
     let siswaCount = 0;
+    let hasilCount = 0;
 
     if (data.folders) {
       mapelCount = data.folders['soal/']?.['mapel.json']?.length || 0;
       soalCount = data.folders['soal/']?.['soal.json']?.length || 0;
       siswaCount = data.folders['siswa/']?.['siswa.json']?.length || 0;
+      hasilCount = data.folders['hasil/']?.['hasil.json']?.length || 0;
     } else {
       mapelCount = (data.mapel || data.mapelList || []).length;
       soalCount = (data.soal || data.soalList || []).length;
       siswaCount = (data.siswa || data.siswaList || []).length;
+      hasilCount = (data.hasil || data.hasilList || []).length;
     }
 
     return {
       valid: true,
-      message: `Arsip Bundel Lengkap CBT Online: ${soalCount} Soal, ${mapelCount} Mata Pelajaran, ${siswaCount} Siswa.`,
-      count: soalCount + mapelCount + siswaCount,
+      message: `Arsip Bundel Lengkap CBT Online: ${soalCount} Soal, ${mapelCount} Mapel, ${siswaCount} Siswa, ${hasilCount} Hasil Ujian.`,
+      count: soalCount + mapelCount + siswaCount + hasilCount,
       sampleName: 'Bundel CBT Lengkap'
     };
   }
@@ -158,6 +181,18 @@ export function validateCbtJsonData(category: JsonCategory, data: any): {
     };
   }
 
+  if (category === 'hasil') {
+    const validCount = data.filter(item => item && (item.id_hasil || item.nisn || item.jawaban_siswa)).length;
+    return {
+      valid: validCount > 0,
+      message: validCount > 0
+        ? `Valid: Ditemukan ${validCount} rekap hasil ujian siap dimasukkan ke folder "hasil/hasil.json" & dicatat ke spreadsheet.`
+        : 'Format hasil ujian tidak sesuai. Diperlukan properti id_hasil, nisn, nama_siswa, nilai_akhir.',
+      count: validCount,
+      sampleName: `${data[0]?.nama_siswa || data[0]?.nisn} (${data[0]?.id_mapel || 'Ujian'}) - Nilai: ${data[0]?.nilai_akhir ?? 0}`
+    };
+  }
+
   return {
     valid: false,
     message: 'Struktur JSON tidak dikenali dalam format CBT Online.',
@@ -187,7 +222,7 @@ export function downloadJsonFile(filename: string, data: any): void {
 export function buildCurrentCbtBundle(): CbtFolderBundle {
   return {
     appName: 'CBT Online Google Workspace',
-    version: '2.5.0',
+    version: '2.6.0',
     generatedAt: new Date().toISOString(),
     folders: {
       'soal/': {
@@ -198,6 +233,7 @@ export function buildCurrentCbtBundle(): CbtFolderBundle {
         'siswa.json': getDataSiswa()
       },
       'hasil/': {
+        'hasil.json': getHasilUjian(),
         description: 'Subfolder "hasil/" di Google Drive dikhususkan untuk backup JSON hasil ujian siswa per sesi. Rekap utama tersimpan di Google Spreadsheet Sheet "HasilUjian".'
       }
     }
@@ -207,7 +243,7 @@ export function buildCurrentCbtBundle(): CbtFolderBundle {
 /**
  * Download standard template JSON files for initial setup
  */
-export function downloadStarterTemplate(type: 'soal' | 'mapel' | 'siswa' | 'bundle'): void {
+export function downloadStarterTemplate(type: 'soal' | 'mapel' | 'siswa' | 'hasil' | 'bundle'): void {
   switch (type) {
     case 'soal':
       downloadJsonFile('soal.json', [
@@ -282,6 +318,28 @@ export function downloadStarterTemplate(type: 'soal' | 'mapel' | 'siswa' | 'bund
       ]);
       break;
 
+    case 'hasil':
+      downloadJsonFile('hasil.json', [
+        {
+          id_hasil: 'H-1711200000001',
+          timestamp: '2026-09-24 09:30:00',
+          nisn: '2026001',
+          nama_siswa: 'Aditya Pratama',
+          kelas: '5-A',
+          id_mapel: 'MATEMATIKA',
+          nama_mapel: 'Matematika Kelas 5',
+          jawaban_siswa: { 'S01': 'C', 'S02': ['10', '25', '50'] },
+          skor_per_soal: { 'S01': 1, 'S02': 2 },
+          skor_total: 3,
+          total_bobot: 3,
+          nilai_akhir: 100,
+          status_koreksi: 'SELESAI',
+          pelanggaran_curang: 0,
+          durasi_menit: 28
+        }
+      ]);
+      break;
+
     case 'bundle':
       downloadJsonFile('cbt_online_bundle.json', buildCurrentCbtBundle());
       break;
@@ -311,6 +369,7 @@ export function checkAndAutoInitNewEnvironment(): {
     getMataPelajaran();
     getBankSoal();
     getDataSiswa();
+    getHasilUjian();
     getKodeSoalList();
 
     localStorage.setItem(STORAGE_ENV_CHECK_KEY, new Date().toISOString());

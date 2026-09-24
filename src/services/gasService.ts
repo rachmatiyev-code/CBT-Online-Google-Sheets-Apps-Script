@@ -43,45 +43,125 @@ export const GAS_CODE_GS = `/**
 
 // ============================================================
 // HELPER: GOOGLE DRIVE "CBT Online" FOLDER & 3 SUBFOLDER
+// Menggunakan Folder ID dan filter anti-Trash untuk mencegah file terlempar ke Root Drive
 // ============================================================
 function getCbtDriveFolders() {
-  var rootName = "CBT Online";
-  var it = DriveApp.getFoldersByName(rootName);
-  var root = it.hasNext() ? it.next() : DriveApp.createFolder(rootName);
+  var sp = PropertiesService.getScriptProperties();
+  var savedRootId = sp.getProperty("CBT_ROOT_FOLDER_ID");
+  var root = null;
 
-  var getSub = function(parent, name) {
-    var sit = parent.getFoldersByName(name);
-    return sit.hasNext() ? sit.next() : parent.createFolder(name);
+  if (savedRootId) {
+    try { 
+      var rf = DriveApp.getFolderById(savedRootId);
+      if (rf && !rf.isTrashed()) root = rf;
+    } catch(e) { root = null; }
+  }
+
+  if (!root) {
+    var it = DriveApp.getFoldersByName("CBT Online");
+    while (it.hasNext()) {
+      var candidate = it.next();
+      if (!candidate.isTrashed()) {
+        root = candidate;
+        break;
+      }
+    }
+    if (!root) {
+      root = DriveApp.createFolder("CBT Online");
+    }
+    sp.setProperty("CBT_ROOT_FOLDER_ID", root.getId());
+  }
+
+  // Fungsi pencarian subfolder HANYA di dalam parent, bukan global Drive
+  var getSub = function(parent, name, propertyKey) {
+    var sub = null;
+    var savedSubId = sp.getProperty(propertyKey);
+    if (savedSubId) {
+      try {
+        var sf = DriveApp.getFolderById(savedSubId);
+        if (sf && !sf.isTrashed()) sub = sf;
+      } catch(e) { sub = null; }
+    }
+
+    if (!sub) {
+      var sit = parent.getFoldersByName(name);
+      while (sit.hasNext()) {
+        var subCandidate = sit.next();
+        if (!subCandidate.isTrashed()) {
+          sub = subCandidate;
+          break;
+        }
+      }
+      if (!sub) {
+        // Penting: Buat berkas/subfolder di dalam parent, BUKAN di root Drive
+        sub = parent.createFolder(name);
+      }
+      sp.setProperty(propertyKey, sub.getId());
+    }
+    return sub;
   };
 
   return {
     root: root,
-    soal: getSub(root, "soal"),
-    siswa: getSub(root, "siswa"),
-    hasil: getSub(root, "hasil")
+    soal: getSub(root, "soal", "CBT_SOAL_FOLDER_ID"),
+    siswa: getSub(root, "siswa", "CBT_SISWA_FOLDER_ID"),
+    hasil: getSub(root, "hasil", "CBT_HASIL_FOLDER_ID")
   };
 }
 
 function saveDriveJson(folder, filename, dataObj) {
+  if (!folder) {
+    throw new Error("Folder Google Drive tidak ditemukan. Berkas tidak dapat disimpan.");
+  }
   var it = folder.getFilesByName(filename);
+  var file = null;
+  while (it.hasNext()) {
+    var candidate = it.next();
+    if (!candidate.isTrashed()) {
+      file = candidate;
+      break;
+    }
+  }
+
   var content = JSON.stringify(dataObj, null, 2);
-  if (it.hasNext()) {
-    var file = it.next();
+  if (file) {
     file.setContent(content);
-    return file;
+    return {
+      fileId: file.getId(),
+      fileName: file.getName(),
+      folderId: folder.getId(),
+      folderName: folder.getName(),
+      action: "updated",
+      size: content.length,
+      updatedAt: new Date().toISOString()
+    };
   } else {
-    return folder.createFile(filename, content, MimeType.PLAIN_TEXT);
+    // Dipastikan createFile dipanggil pada object folder target (/soal/, /siswa/, /hasil/)
+    // BUKAN DriveApp.createFile() agar TIDAK tersimpan di halaman utama Drive Saya
+    var newFile = folder.createFile(filename, content, MimeType.PLAIN_TEXT);
+    return {
+      fileId: newFile.getId(),
+      fileName: newFile.getName(),
+      folderId: folder.getId(),
+      folderName: folder.getName(),
+      action: "created",
+      size: content.length,
+      updatedAt: new Date().toISOString()
+    };
   }
 }
 
 function readDriveJson(folder, filename) {
+  if (!folder) return null;
   var it = folder.getFilesByName(filename);
-  if (it.hasNext()) {
+  while (it.hasNext()) {
     var file = it.next();
-    try {
-      return JSON.parse(file.getBlob().getDataAsString());
-    } catch(e) {
-      return null;
+    if (!file.isTrashed()) {
+      try {
+        return JSON.parse(file.getBlob().getDataAsString());
+      } catch(e) {
+        return null;
+      }
     }
   }
   return null;
@@ -122,10 +202,71 @@ function doGet(e) {
     if (action === 'ping') {
       response = { 
         status: 'success', 
+        backendVersion: '2.6.0',
         message: 'Google Apps Script CBT Backend Online! Folder "CBT Online" (soal, siswa, hasil) siap.',
+        executor: Session.getEffectiveUser().getEmail() || 'Me',
         time: new Date() 
       };
     } 
+    else if (action === 'verifyStorage') {
+      // Verifikasi real-time apakah berkas .json benar-benar ada di subfolder Google Drive
+      var soalData = readDriveJson(folders.soal, 'soal.json');
+      var mapelData = readDriveJson(folders.soal, 'mapel.json');
+      var siswaData = readDriveJson(folders.siswa, 'siswa.json');
+      var hasilData = readDriveJson(folders.hasil, 'hasil.json');
+
+      var sheetHasil = ss.getSheetByName('HasilUjian');
+      var rowCount = sheetHasil ? Math.max(0, sheetHasil.getLastRow() - 1) : 0;
+
+      // Hitung berkas individual di subfolder hasil/
+      var countHasilFiles = 0;
+      var hIt = folders.hasil.getFiles();
+      while (hIt.hasNext()) {
+        if (!hIt.next().isTrashed()) countHasilFiles++;
+      }
+
+      response = {
+        status: 'success',
+        backendVersion: '2.6.0',
+        message: 'Verifikasi server berhasil: berkas tersimpan di subfolder Google Drive target.',
+        executor: Session.getEffectiveUser().getEmail() || 'Me',
+        activeUser: Session.getActiveUser().getEmail() || 'Anonymous',
+        time: new Date().toISOString(),
+        folders: {
+          root: { id: folders.root.getId(), name: folders.root.getName(), url: folders.root.getUrl() },
+          soal: { id: folders.soal.getId(), name: folders.soal.getName(), url: folders.soal.getUrl() },
+          siswa: { id: folders.siswa.getId(), name: folders.siswa.getName(), url: folders.siswa.getUrl() },
+          hasil: { id: folders.hasil.getId(), name: folders.hasil.getName(), url: folders.hasil.getUrl() }
+        },
+        files: {
+          soalJson: {
+            exists: !!soalData,
+            count: soalData ? soalData.length : 0,
+            path: 'CBT Online/soal/soal.json'
+          },
+          mapelJson: {
+            exists: !!mapelData,
+            count: mapelData ? mapelData.length : 0,
+            path: 'CBT Online/soal/mapel.json'
+          },
+          siswaJson: {
+            exists: !!siswaData,
+            count: siswaData ? siswaData.length : 0,
+            path: 'CBT Online/siswa/siswa.json'
+          },
+          hasilJson: {
+            exists: !!hasilData,
+            count: hasilData ? hasilData.length : 0,
+            path: 'CBT Online/hasil/hasil.json'
+          }
+        },
+        spreadsheet: {
+          sheetHasilExists: !!sheetHasil,
+          totalHasilRows: rowCount,
+          subfolderHasilFileCount: countHasilFiles
+        }
+      };
+    }
     else if (action === 'initFolders') {
       // Skrip utilitas untuk men-generate struktur folder JSON secara otomatis jika dijalankan di lingkungan baru
       var mapelFile = readDriveJson(folders.soal, 'mapel.json');
@@ -459,35 +600,41 @@ function doPost(e) {
       };
     } 
     // ------------------------------------------------------------
-    // AKSI 3: UPLOAD DATA SOAL & SISWA KE GOOGLE DRIVE (.JSON)
+    // AKSI 3: UPLOAD DATA SOAL, SISWA & HASIL KE GOOGLE DRIVE (.JSON)
     // Sesuai instruksi: Data siswa & soal TIDAK dicatat di Spreadsheet!
     // ------------------------------------------------------------
     else if (action === 'syncUpload' || action === 'saveAllData') {
-      var countSoalSaved = 0;
-      var countSiswaSaved = 0;
+      var infoSoal = null;
+      var infoSiswa = null;
+      var infoMapel = null;
+      var infoKode = null;
+      var infoHasil = null;
 
-      // 1. Simpan Soal ke Google Drive folder "CBT Online/soal/soal.json"
+      // 1. Simpan Soal ke Google Drive subfolder /soal/soal.json
       if (payload.soal && Array.isArray(payload.soal)) {
-        saveDriveJson(folders.soal, 'soal.json', payload.soal);
-        countSoalSaved = payload.soal.length;
+        infoSoal = saveDriveJson(folders.soal, 'soal.json', payload.soal);
       }
 
-      // 2. Simpan Data Siswa ke Google Drive folder "CBT Online/siswa/siswa.json"
+      // 2. Simpan Data Siswa ke Google Drive subfolder /siswa/siswa.json
       if (payload.siswa && Array.isArray(payload.siswa)) {
-        saveDriveJson(folders.siswa, 'siswa.json', payload.siswa);
-        countSiswaSaved = payload.siswa.length;
+        infoSiswa = saveDriveJson(folders.siswa, 'siswa.json', payload.siswa);
       }
 
-      // 3. Simpan Metadata Mapel & Paket ke Google Drive folder "CBT Online/soal/"
+      // 3. Simpan Metadata Mapel & Paket ke Google Drive subfolder /soal/
       if (payload.mapel && Array.isArray(payload.mapel)) {
-        saveDriveJson(folders.soal, 'mapel.json', payload.mapel);
+        infoMapel = saveDriveJson(folders.soal, 'mapel.json', payload.mapel);
       }
       if (payload.kode_soal && Array.isArray(payload.kode_soal)) {
-        saveDriveJson(folders.soal, 'kode_soal.json', payload.kode_soal);
+        infoKode = saveDriveJson(folders.soal, 'kode_soal.json', payload.kode_soal);
+      }
+
+      // 4. Simpan Arsip Hasil Ujian ke Google Drive subfolder /hasil/hasil.json
+      if (payload.hasil && Array.isArray(payload.hasil)) {
+        infoHasil = saveDriveJson(folders.hasil, 'hasil.json', payload.hasil);
       }
 
       // Pastikan Tab HasilUjian tersedia di spreadsheet
-      getOrCreateSheet(ss, 'HasilUjian', [
+      var sheetHasil = getOrCreateSheet(ss, 'HasilUjian', [
         'id_hasil', 'timestamp', 'nisn', 'nama_siswa', 'kelas', 'id_mapel',
         'jawaban_siswa', 'skor_per_soal', 'skor_total', 'total_bobot',
         'nilai_akhir', 'status_koreksi', 'pelanggaran_curang', 'durasi_menit'
@@ -495,7 +642,23 @@ function doPost(e) {
 
       response = {
         status: 'success',
-        message: 'Berhasil menyimpan ' + countSoalSaved + ' butir soal ke /soal/soal.json dan ' + countSiswaSaved + ' data siswa ke /siswa/siswa.json di Google Drive ("CBT Online"). Spreadsheet hanya mencatat Hasil Ujian.'
+        backendVersion: '2.6.0',
+        message: 'Data berhasil disimpan ke folder "CBT Online" di Google Drive!',
+        executor: Session.getEffectiveUser().getEmail() || 'Me',
+        time: new Date().toISOString(),
+        folders: {
+          root: { id: folders.root.getId(), name: folders.root.getName(), url: folders.root.getUrl() },
+          soal: { id: folders.soal.getId(), name: folders.soal.getName(), url: folders.soal.getUrl() },
+          siswa: { id: folders.siswa.getId(), name: folders.siswa.getName(), url: folders.siswa.getUrl() },
+          hasil: { id: folders.hasil.getId(), name: folders.hasil.getName(), url: folders.hasil.getUrl() }
+        },
+        files: {
+          soal: infoSoal,
+          siswa: infoSiswa,
+          mapel: infoMapel,
+          kode: infoKode,
+          hasil: infoHasil
+        }
       };
     } else {
       response = { status: 'error', message: 'Aksi POST tidak dikenal.' };
@@ -1106,7 +1269,12 @@ export async function tarikDataDariGoogleSheets(targetUrl?: string): Promise<{
 }
 
 // Push / Upload local data to Google Drive & Sheets
-export async function unggahDataKeGoogleSheets(targetUrl?: string): Promise<{ success: boolean; message: string }> {
+export async function unggahDataKeGoogleSheets(targetUrl?: string): Promise<{ 
+  success: boolean; 
+  message: string;
+  verified?: boolean;
+  details?: any;
+}> {
   const url = (targetUrl || getGasWebappUrl()).trim();
   if (!url) {
     return { success: false, message: 'URL Google Apps Script belum diatur.' };
@@ -1115,6 +1283,7 @@ export async function unggahDataKeGoogleSheets(targetUrl?: string): Promise<{ su
   const mapel = getMataPelajaran();
   const soal = getBankSoal();
   const siswa = getDataSiswa();
+  const hasil = getHasilUjian();
   const kode_soal = getKodeSoalList();
 
   const payload = {
@@ -1122,10 +1291,12 @@ export async function unggahDataKeGoogleSheets(targetUrl?: string): Promise<{ su
     mapel,
     soal,
     siswa,
+    hasil,
     kode_soal,
   };
 
   try {
+    // Kirim data sinkronisasi POST ke Web App GAS
     await fetch(url, {
       method: 'POST',
       mode: 'no-cors',
@@ -1139,14 +1310,80 @@ export async function unggahDataKeGoogleSheets(targetUrl?: string): Promise<{ su
     setLastSyncedAt(nowStr);
     setLastVerifiedAt(nowStr);
 
+    // Verifikasi real-time ke backend server: memastikan berkas benar-benar tercipta di subfolder Drive
+    // Mencegah false-positive atau pesan sukses statistik hardcoded
+    try {
+      const verifyCheck = await verifikasiPenyimpananBackend(url);
+      if (verifyCheck.success && verifyCheck.data) {
+        const v = verifyCheck.data;
+        const countSoal = v.files?.soalJson?.count ?? soal.length;
+        const countSiswa = v.files?.siswaJson?.count ?? siswa.length;
+        const countHasil = v.files?.hasilJson?.count ?? (v.spreadsheet?.totalHasilRows || hasil.length);
+        const folderRootUrl = v.folders?.root?.url || '';
+
+        return {
+          success: true,
+          verified: true,
+          message: `Verifikasi Server Sukses: Tersimpan ${countSoal} soal di /soal/soal.json, ${countSiswa} siswa di /siswa/siswa.json, dan ${countHasil} hasil di folder "CBT Online" Google Drive.`,
+          details: v
+        };
+      }
+    } catch (verErr) {
+      console.warn('Verifikasi sekunder server terlewati:', verErr);
+    }
+
     return {
       success: true,
-      message: `Berhasil menyimpan data ${soal.length} soal ke folder "CBT Online/soal/soal.json" dan ${siswa.length} siswa ke "CBT Online/siswa/siswa.json" di Google Drive! Tab HasilUjian di Google Spreadsheet siap mencatat nilai siswa.`,
+      verified: false,
+      message: `Data ${soal.length} butir soal, ${siswa.length} siswa, dan ${hasil.length} hasil ujian telah dikirimkan ke Google Apps Script. Silakan klik tombol 'Verifikasi Penyimpanan' untuk memastikan berkas ada di subfolder Google Drive Anda.`,
     };
   } catch (err: any) {
     return {
       success: false,
-      message: err.message || 'Gagal mengunggah data ke Google Drive / Apps Script.',
+      message: err.message || 'Gagal mengunggah data ke Google Drive / Apps Script. Pastikan Web App aktif.',
+    };
+  }
+}
+
+// Verifikasi Audit Penyimpanan Backend Google Drive secara real-time
+export async function verifikasiPenyimpananBackend(targetUrl?: string): Promise<{
+  success: boolean;
+  message: string;
+  data?: any;
+}> {
+  const url = (targetUrl || getGasWebappUrl()).trim();
+  if (!url) {
+    return { success: false, message: 'URL Google Apps Script belum diatur.' };
+  }
+
+  try {
+    const checkUrl = `${url}${url.includes('?') ? '&' : '?'}action=verifyStorage&_t=${Date.now()}`;
+    const res = await fetch(checkUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    const json = await res.json();
+    if (json && json.status === 'success') {
+      return {
+        success: true,
+        message: json.message || 'Verifikasi server berhasil.',
+        data: json,
+      };
+    } else {
+      return {
+        success: false,
+        message: json?.message || 'Server Google Apps Script merespon, namun status verifikasi gagal.',
+      };
+    }
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `Gagal memverifikasi status backend: ${err.message}`,
     };
   }
 }

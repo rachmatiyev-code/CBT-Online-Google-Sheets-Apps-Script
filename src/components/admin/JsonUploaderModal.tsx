@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { MataPelajaran, Question, Siswa } from '../../types';
+import { MataPelajaran, Question, Siswa, HasilUjian } from '../../types';
 import { 
   X, 
   UploadCloud, 
@@ -16,7 +16,13 @@ import {
   HardDrive,
   Cloud,
   Check,
-  Info
+  Info,
+  HelpCircle,
+  ExternalLink,
+  ShieldCheck,
+  ChevronDown,
+  ChevronUp,
+  Award
 } from 'lucide-react';
 import { 
   detectJsonCategory, 
@@ -29,9 +35,11 @@ import {
 import { 
   unggahDataKeGoogleSheets, 
   inisialisasiFolderGdrive,
+  verifikasiPenyimpananBackend,
   saveMataPelajaran,
   saveBankSoal,
-  saveSiswa
+  saveSiswa,
+  saveHasilUjian
 } from '../../services/gasService';
 
 interface JsonUploaderModalProps {
@@ -40,11 +48,13 @@ interface JsonUploaderModalProps {
   mapelList: MataPelajaran[];
   soalList: Question[];
   siswaList: Siswa[];
+  hasilList: HasilUjian[];
   gasUrl: string;
   onDataUpdated: (data: {
     mapel?: MataPelajaran[];
     soal?: Question[];
     siswa?: Siswa[];
+    hasil?: HasilUjian[];
   }) => void;
 }
 
@@ -54,6 +64,7 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
   mapelList,
   soalList,
   siswaList,
+  hasilList,
   gasUrl,
   onDataUpdated
 }) => {
@@ -71,8 +82,11 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [syncToGdrive, setSyncToGdrive] = useState<boolean>(Boolean(gasUrl));
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [statusFeedback, setStatusFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [statusFeedback, setStatusFeedback] = useState<{ type: 'success' | 'error' | 'warning'; message: string; details?: any } | null>(null);
   const [isInitializingGdrive, setIsInitializingGdrive] = useState<boolean>(false);
+  const [isVerifyingStorage, setIsVerifyingStorage] = useState<boolean>(false);
+  const [showTroubleshootingGuide, setShowTroubleshootingGuide] = useState<boolean>(false);
+  const [verificationReport, setVerificationReport] = useState<any | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -125,27 +139,32 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
       let newMapel = [...mapelList];
       let newSoal = [...soalList];
       let newSiswa = [...siswaList];
+      let newHasil = [...hasilList];
 
       if (finalCategory === 'bundle') {
         // Multi-folder bundle
         let inMapel: MataPelajaran[] = [];
         let inSoal: Question[] = [];
         let inSiswa: Siswa[] = [];
+        let inHasil: HasilUjian[] = [];
 
         if (parsedData.folders) {
           inMapel = parsedData.folders['soal/']?.['mapel.json'] || [];
           inSoal = parsedData.folders['soal/']?.['soal.json'] || [];
           inSiswa = parsedData.folders['siswa/']?.['siswa.json'] || [];
+          inHasil = parsedData.folders['hasil/']?.['hasil.json'] || [];
         } else {
           inMapel = parsedData.mapel || parsedData.mapelList || [];
           inSoal = parsedData.soal || parsedData.soalList || [];
           inSiswa = parsedData.siswa || parsedData.siswaList || [];
+          inHasil = parsedData.hasil || parsedData.hasilList || [];
         }
 
         if (importMode === 'replace') {
           if (inMapel.length > 0) newMapel = inMapel;
           if (inSoal.length > 0) newSoal = inSoal;
           if (inSiswa.length > 0) newSiswa = inSiswa;
+          if (inHasil.length > 0) newHasil = inHasil;
         } else {
           // Merge unique by ID
           if (inMapel.length > 0) {
@@ -163,13 +182,19 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
             const toAdd = inSiswa.filter(s => !existingNisns.has(s.nisn));
             newSiswa = [...newSiswa, ...toAdd];
           }
+          if (inHasil.length > 0) {
+            const existingHIds = new Set(newHasil.map(h => h.id_hasil));
+            const toAdd = inHasil.filter(h => !existingHIds.has(h.id_hasil));
+            newHasil = [...newHasil, ...toAdd];
+          }
         }
 
         saveMataPelajaran(newMapel);
         saveBankSoal(newSoal);
         saveSiswa(newSiswa);
+        saveHasilUjian(newHasil);
 
-        onDataUpdated({ mapel: newMapel, soal: newSoal, siswa: newSiswa });
+        onDataUpdated({ mapel: newMapel, soal: newSoal, siswa: newSiswa, hasil: newHasil });
       } else if (finalCategory === 'soal') {
         const incoming: Question[] = parsedData;
         if (importMode === 'replace') {
@@ -203,15 +228,27 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
         }
         saveSiswa(newSiswa);
         onDataUpdated({ siswa: newSiswa });
+      } else if (finalCategory === 'hasil') {
+        // Support either an array of HasilUjian or single object
+        const incoming: HasilUjian[] = Array.isArray(parsedData) ? parsedData : [parsedData];
+        if (importMode === 'replace') {
+          newHasil = incoming;
+        } else {
+          const existingHIds = new Set(newHasil.map(h => h.id_hasil));
+          const toAdd = incoming.filter(h => !existingHIds.has(h.id_hasil));
+          newHasil = [...newHasil, ...toAdd];
+        }
+        saveHasilUjian(newHasil);
+        onDataUpdated({ hasil: newHasil });
       }
 
       let extraMsg = '';
       if (syncToGdrive && gasUrl.trim()) {
         const uploadRes = await unggahDataKeGoogleSheets(gasUrl);
         if (uploadRes.success) {
-          extraMsg = ' Data juga langsung diunggah ke Google Drive ("CBT Online")!';
+          extraMsg = ` [Backend Google Drive]: ${uploadRes.message}`;
         } else {
-          extraMsg = ` Peringatan Google Drive: ${uploadRes.message}`;
+          extraMsg = ` [Peringatan Backend]: ${uploadRes.message}`;
         }
       }
 
@@ -220,7 +257,6 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
         message: `Berhasil menerapkan berkas JSON ke sistem! (${validationResult.count} data diproses).${extraMsg}`
       });
 
-      // Clear selection after success
       setSelectedFile(null);
       setParsedData(null);
       setValidationResult(null);
@@ -231,6 +267,43 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
       });
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleRunStorageVerification = async () => {
+    if (!gasUrl.trim()) {
+      setStatusFeedback({
+        type: 'error',
+        message: 'URL Google Apps Script belum diisi pada pengaturan database.'
+      });
+      return;
+    }
+
+    setIsVerifyingStorage(true);
+    setStatusFeedback(null);
+    setVerificationReport(null);
+
+    try {
+      const res = await verifikasiPenyimpananBackend(gasUrl);
+      if (res.success && res.data) {
+        setVerificationReport(res.data);
+        setStatusFeedback({
+          type: 'success',
+          message: 'Verifikasi server berhasil! Berkas terkonfirmasi aktif di Google Drive.'
+        });
+      } else {
+        setStatusFeedback({
+          type: 'warning',
+          message: res.message || 'Server Google Apps Script tidak menemukan struktur folder yang diharapkan.'
+        });
+      }
+    } catch (err: any) {
+      setStatusFeedback({
+        type: 'error',
+        message: `Gagal memverifikasi penyimpanan Google Drive: ${err.message}`
+      });
+    } finally {
+      setIsVerifyingStorage(false);
     }
   };
 
@@ -270,7 +343,7 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 sm:p-7 space-y-6 my-8">
+      <div className="relative w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-6 sm:p-7 space-y-6 my-8 max-h-[92vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-start justify-between pb-4 border-b border-slate-800">
           <div className="flex items-center space-x-3">
@@ -285,7 +358,7 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Impor data soal, mata pelajaran, atau siswa langsung sesuai struktur subfolder Google Drive.
+                Impor data soal, siswa, mata pelajaran, atau hasil ujian massal sesuai struktur subfolder Google Drive.
               </p>
             </div>
           </div>
@@ -298,39 +371,170 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
         </div>
 
         {/* Structure Guide Card */}
-        <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs space-y-2">
-          <div className="flex items-center space-x-2 text-indigo-400 font-semibold">
-            <Folder className="w-4 h-4" />
-            <span>Peta Struktur Berkas Target "CBT Online":</span>
+        <div className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800 text-xs space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2 text-indigo-400 font-semibold">
+              <Folder className="w-4 h-4" />
+              <span>Struktur Berkas "CBT Online" (Google Drive):</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowTroubleshootingGuide(!showTroubleshootingGuide)}
+              className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center space-x-1 underline cursor-pointer"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>{showTroubleshootingGuide ? 'Tutup Panduan Server' : 'Panduan Mengapa File Gagal Tersimpan'}</span>
+              {showTroubleshootingGuide ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-[11px]">
-            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
-              <span className="text-emerald-400 font-bold block">📁 /soal/</span>
-              <span className="text-slate-300">• soal.json (Bank Soal)</span>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 font-mono text-[11px]">
+            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+              <span className="text-emerald-400 font-bold block mb-1">📁 /soal/</span>
+              <span className="text-slate-300 block">• soal.json (Bank Soal)</span>
               <span className="text-slate-400 block">• mapel.json (Mapel)</span>
             </div>
-            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
-              <span className="text-blue-400 font-bold block">📁 /siswa/</span>
-              <span className="text-slate-300 block">• siswa.json (Daftar Siswa)</span>
+            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+              <span className="text-blue-400 font-bold block mb-1">📁 /siswa/</span>
+              <span className="text-slate-300 block">• siswa.json (Data Siswa)</span>
+              <span className="text-slate-500 block text-[10px]">NISN, Nama, PIN, Kelas</span>
             </div>
-            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
-              <span className="text-amber-400 font-bold block">📁 /hasil/</span>
-              <span className="text-slate-400 block">Arsip JSON hasil ujian (Rekap di Spreadsheet)</span>
+            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+              <span className="text-amber-400 font-bold block mb-1">📁 /hasil/</span>
+              <span className="text-slate-300 block">• hasil.json (Rekap Nilai)</span>
+              <span className="text-slate-400 block text-[10px]">Dicatat juga di Sheet HasilUjian</span>
             </div>
           </div>
         </div>
+
+        {/* Collapsible Troubleshooting & Architecture Diagnostic Guide */}
+        {showTroubleshootingGuide && (
+          <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-xs space-y-3 animate-fadeIn text-slate-200">
+            <h4 className="font-bold text-amber-300 flex items-center space-x-1.5 text-sm">
+              <AlertCircle className="w-4 h-4 text-amber-400" />
+              <span>Penyebab Umum Penyimpanan Backend GAS Gagal & Cara Mengatasinya:</span>
+            </h4>
+            
+            <div className="space-y-2.5 text-[11.5px] leading-relaxed">
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-amber-900/40">
+                <span className="font-bold text-amber-300 block">1. Berkas Tersimpan di Root "Drive Saya" (Bukan di Subfolder)</span>
+                <p className="text-slate-300 mt-0.5">
+                  Jika kode Apps Script memanggil <code>DriveApp.createFile()</code> langsung, berkas tersimpan di luar folder. Sistem CBT ini telah diperbarui untuk selalu memanggil <code>folder.createFile()</code> pada subfolder target dengan ID unik dan filter <code>!isTrashed()</code>.
+                </p>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-amber-900/40">
+                <span className="font-bold text-amber-300 block">2. Setelan Deployment Web App (Execute As)</span>
+                <p className="text-slate-300 mt-0.5">
+                  Buka Apps Script &gt; <strong>Deploy</strong> &gt; <strong>Manage deployments</strong>. Pastikan <strong>Execute as</strong> disetel ke <strong>Me (email Anda)</strong> dan <strong>Who has access</strong> disetel ke <strong>Anyone</strong>. Jika tidak, akses siswa/web app akan ditolak atau tersimpan di Drive akun siswa.
+                </p>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-amber-900/40">
+                <span className="font-bold text-amber-300 block">3. Deployment Belum Diperbarui ke Versi Baru (*New Version*)</span>
+                <p className="text-slate-300 mt-0.5">
+                  Setiap kali Anda menempelkan kode baru ke Google Apps Script, Anda <strong>wajib</strong> membuat versi baru: Klik <strong>Deploy</strong> &gt; <strong>Manage deployments</strong> &gt; Ikon pensil (Edit) &gt; Pada Version pilih <strong>New version</strong> &gt; Klik <strong>Deploy</strong>.
+                </p>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-amber-900/40">
+                <span className="font-bold text-amber-300 block">4. Pencarian Folder Menggunakan Nama vs Folder ID</span>
+                <p className="text-slate-300 mt-0.5">
+                  Pencarian global <code>DriveApp.getFoldersByName</code> dapat keliru memilih folder lama di Sampah (Trash). Backend kami secara otomatis memfilter folder sampah dan meng-cache <strong>Folder ID</strong> unik di Script Properties.
+                </p>
+              </div>
+            </div>
+
+            {gasUrl && (
+              <div className="pt-2 flex items-center justify-between border-t border-amber-500/20">
+                <span className="text-slate-400 text-[11px]">Uji penyimpanan langsung di server Google Drive Anda:</span>
+                <button
+                  type="button"
+                  onClick={handleRunStorageVerification}
+                  disabled={isVerifyingStorage}
+                  className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center space-x-1.5 transition"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>{isVerifyingStorage ? 'Memverifikasi...' : 'Verifikasi Penyimpanan Backend Sekarang'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Live Verification Report Card */}
+        {verificationReport && (
+          <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/50 text-xs space-y-2.5 animate-fadeIn">
+            <div className="flex items-center justify-between font-bold text-emerald-300 text-sm">
+              <div className="flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Hasil Audit Server Google Apps Script (Backend Versi {verificationReport.backendVersion || '2.6.0'})</span>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-900/80 text-emerald-300 font-mono">
+                {verificationReport.executor}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-[11px]">
+              <div className="p-2 rounded-lg bg-slate-900/80 border border-emerald-900/50">
+                <span className="text-slate-400 block text-[10px]">soal.json:</span>
+                <span className="text-emerald-300 font-bold">
+                  {verificationReport.files?.soalJson?.count ?? 0} Soal
+                </span>
+                <span className="text-[10px] text-slate-500 block">📁 /soal/</span>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-900/80 border border-emerald-900/50">
+                <span className="text-slate-400 block text-[10px]">mapel.json:</span>
+                <span className="text-emerald-300 font-bold">
+                  {verificationReport.files?.mapelJson?.count ?? 0} Mapel
+                </span>
+                <span className="text-[10px] text-slate-500 block">📁 /soal/</span>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-900/80 border border-emerald-900/50">
+                <span className="text-slate-400 block text-[10px]">siswa.json:</span>
+                <span className="text-emerald-300 font-bold">
+                  {verificationReport.files?.siswaJson?.count ?? 0} Siswa
+                </span>
+                <span className="text-[10px] text-slate-500 block">📁 /siswa/</span>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-900/80 border border-emerald-900/50">
+                <span className="text-slate-400 block text-[10px]">Sheet HasilUjian:</span>
+                <span className="text-amber-300 font-bold">
+                  {verificationReport.spreadsheet?.totalHasilRows ?? 0} Baris Nilai
+                </span>
+                <span className="text-[10px] text-slate-500 block">📊 Spreadsheet</span>
+              </div>
+            </div>
+
+            {verificationReport.folders?.root?.url && (
+              <div className="pt-2 border-t border-emerald-900/50 flex items-center justify-between text-[11px]">
+                <span className="text-slate-300">Folder Root: <strong>{verificationReport.folders.root.name}</strong></span>
+                <a
+                  href={verificationReport.folders.root.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-indigo-400 hover:text-indigo-300 flex items-center space-x-1 underline"
+                >
+                  <span>Buka Folder di Google Drive</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Target Folder Selector Tabs */}
         <div>
           <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
             Pilih Target Berkas yang Diunggah:
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             {[
               { id: 'unknown', label: '⚡ Deteksi Otomatis', desc: 'Auto identifikasi' },
               { id: 'soal', label: '📁 soal.json', desc: 'Folder /soal/' },
               { id: 'mapel', label: '📁 mapel.json', desc: 'Folder /soal/' },
               { id: 'siswa', label: '📁 siswa.json', desc: 'Folder /siswa/' },
+              { id: 'hasil', label: '📁 hasil.json', desc: 'Folder /hasil/' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -383,7 +587,7 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
               {selectedFile ? selectedFile.name : 'Klik atau seret berkas .json ke area ini'}
             </p>
             <p className="text-xs text-slate-400 mt-1">
-              Format yang didukung: <code>soal.json</code>, <code>mapel.json</code>, <code>siswa.json</code>, atau berkas bundel.
+              Format didukung: <code>soal.json</code>, <code>mapel.json</code>, <code>siswa.json</code>, <code>hasil.json</code>, atau berkas bundel.
             </p>
           </div>
         </div>
@@ -417,7 +621,9 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
           <div className={`p-4 rounded-xl border text-xs flex items-start space-x-2 ${
             statusFeedback.type === 'success'
               ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300'
-              : 'bg-rose-950/60 border-rose-500 text-rose-300'
+              : statusFeedback.type === 'warning'
+                ? 'bg-amber-950/60 border-amber-500 text-amber-300'
+                : 'bg-rose-950/60 border-rose-500 text-rose-300'
           }`}>
             {statusFeedback.type === 'success' ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
@@ -460,7 +666,7 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1.5">Sinkronisasi Backend:</label>
+              <label className="text-xs font-semibold text-slate-300 block mb-1.5">Sinkronisasi Backend Google Drive:</label>
               <label className="flex items-start space-x-2 cursor-pointer text-xs text-slate-300">
                 <input
                   type="checkbox"
@@ -478,36 +684,57 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
         )}
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-800">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition"
-          >
-            Tutup
-          </button>
-          <button
-            type="button"
-            disabled={!validationResult?.valid || isProcessing}
-            onClick={handleApplyData}
-            className={`px-5 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 ${
-              validationResult?.valid && !isProcessing
-                ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 cursor-pointer'
-                : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-            }`}
-          >
-            {isProcessing ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Memproses Data...</span>
-              </>
-            ) : (
-              <>
-                <Check className="w-4 h-4" />
-                <span>Terapkan Berkas JSON ke Sistem</span>
-              </>
+        <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+          <div className="flex items-center space-x-2">
+            {gasUrl && (
+              <button
+                type="button"
+                onClick={handleRunStorageVerification}
+                disabled={isVerifyingStorage}
+                className="px-3 py-2 rounded-xl text-xs font-semibold text-emerald-300 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-500/40 transition flex items-center space-x-1.5 cursor-pointer"
+                title="Verifikasi apakah berkas .json benar-benar tersimpan di Google Drive Anda"
+              >
+                {isVerifyingStorage ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                )}
+                <span>Verifikasi Server</span>
+              </button>
             )}
-          </button>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            >
+              Tutup
+            </button>
+            <button
+              type="button"
+              disabled={!validationResult?.valid || isProcessing}
+              onClick={handleApplyData}
+              className={`px-5 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 ${
+                validationResult?.valid && !isProcessing
+                  ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 cursor-pointer'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              {isProcessing ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Memproses Data...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Terapkan Berkas JSON ke Sistem</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Template Download & Auto-Init Utility Section */}
@@ -515,7 +742,7 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300 flex items-center space-x-1.5">
               <Download className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Utilitas Template Struktur Folder JSON:</span>
+              <span>Unduh Berkas Contoh / Template Struktur:</span>
             </span>
             {gasUrl && (
               <button
@@ -531,14 +758,14 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
             )}
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             <button
               type="button"
               onClick={() => downloadStarterTemplate('soal')}
               className="px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 flex items-center justify-center space-x-1 transition"
             >
               <Download className="w-3 h-3 text-slate-400" />
-              <span>Template soal.json</span>
+              <span>soal.json</span>
             </button>
             <button
               type="button"
@@ -546,7 +773,7 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
               className="px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 flex items-center justify-center space-x-1 transition"
             >
               <Download className="w-3 h-3 text-slate-400" />
-              <span>Template mapel.json</span>
+              <span>mapel.json</span>
             </button>
             <button
               type="button"
@@ -554,7 +781,15 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
               className="px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 flex items-center justify-center space-x-1 transition"
             >
               <Download className="w-3 h-3 text-slate-400" />
-              <span>Template siswa.json</span>
+              <span>siswa.json</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadStarterTemplate('hasil')}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] text-amber-300 flex items-center justify-center space-x-1 transition"
+            >
+              <Award className="w-3 h-3 text-amber-400" />
+              <span>hasil.json</span>
             </button>
             <button
               type="button"
@@ -562,7 +797,7 @@ export const JsonUploaderModal: React.FC<JsonUploaderModalProps> = ({
               className="px-2.5 py-1.5 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/60 border border-indigo-700/50 text-[11px] text-indigo-300 font-semibold flex items-center justify-center space-x-1 transition"
             >
               <Layers className="w-3 h-3 text-indigo-400" />
-              <span>Unduh Bundel CBT</span>
+              <span>Bundel CBT</span>
             </button>
           </div>
         </div>

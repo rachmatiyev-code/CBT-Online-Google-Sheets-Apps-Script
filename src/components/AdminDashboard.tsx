@@ -151,10 +151,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     mapel?: MataPelajaran[];
     soal?: Question[];
     siswa?: Siswa[];
+    hasil?: HasilUjian[];
   }) => {
     if (data.mapel) onUpdateMapel(data.mapel);
     if (data.soal) onUpdateSoal(data.soal);
     if (data.siswa) onUpdateSiswa(data.siswa);
+    if (data.hasil) onUpdateHasil(data.hasil);
   };
 
   // Filters
@@ -2026,6 +2028,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           mapelList={mapelList}
           soalList={soalList}
           siswaList={siswaList}
+          hasilList={hasilList}
           gasUrl={gasUrlInput || getGasWebappUrl()}
           onDataUpdated={(updated) => {
             handleDataUpdatedFromUpload(updated);
